@@ -1,0 +1,104 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/agent_bridge.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/session_manager.gd" id="2"]
+
+[node name="IdeLayout" type="VBoxContainer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="HSplit" type="HSplitContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Sidebar" type="VBoxContainer" parent="HSplit"]
+layout_mode = 2
+custom_minimum_size = Vector2(200, 0)
+
+[node name="SidebarLabel" type="Label" parent="HSplit/Sidebar"]
+layout_mode = 2
+text = "Sessions"
+
+[node name="SessionList" type="ItemList" parent="HSplit/Sidebar"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HSeparator" type="HSeparator" parent="HSplit/Sidebar"]
+layout_mode = 2
+
+[node name="SettingsLabel" type="Label" parent="HSplit/Sidebar"]
+layout_mode = 2
+text = "Settings"
+
+[node name="ProviderOpt" type="OptionButton" parent="HSplit/Sidebar"]
+layout_mode = 2
+
+[node name="ModelInput" type="LineEdit" parent="HSplit/Sidebar"]
+layout_mode = 2
+placeholder_text = "Model name"
+
+[node name="ApiKeyInput" type="LineEdit" parent="HSplit/Sidebar"]
+layout_mode = 2
+placeholder_text = "API Key"
+secret = true
+
+[node name="PermModeOpt" type="OptionButton" parent="HSplit/Sidebar"]
+layout_mode = 2
+
+[node name="CenterPanel" type="VBoxContainer" parent="HSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ChatScroll" type="ScrollContainer" parent="HSplit/CenterPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ChatMessages" type="VBoxContainer" parent="HSplit/CenterPanel/ChatScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="InputBar" type="HBoxContainer" parent="HSplit/CenterPanel"]
+layout_mode = 2
+
+[node name="InputField" type="TextEdit" parent="HSplit/CenterPanel/InputBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 40)
+wrap_mode = 2
+
+[node name="SendButton" type="Button" parent="HSplit/CenterPanel/InputBar"]
+layout_mode = 2
+text = "Send"
+
+[node name="ToolPanel" type="VBoxContainer" parent="HSplit"]
+layout_mode = 2
+custom_minimum_size = Vector2(250, 0)
+
+[node name="ToolLabel" type="Label" parent="HSplit/ToolPanel"]
+layout_mode = 2
+text = "Tool Output"
+
+[node name="ToolScroll" type="ScrollContainer" parent="HSplit/ToolPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ToolContent" type="VBoxContainer" parent="HSplit/ToolPanel/ToolScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusBar" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="StatusBar"]
+layout_mode = 2
+text = "Ready"
+
+[node name="TokenLabel" type="Label" parent="StatusBar"]
+layout_mode = 2
+text = "Tokens: 0 in / 0 out"
+
+[node name="PermLabel" type="Label" parent="StatusBar"]
+layout_mode = 2
+text = "Mode: ask"

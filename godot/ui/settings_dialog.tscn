@@ -1,0 +1,42 @@
+[gd_scene format=3]
+
+[node name="SettingsDialog" type="AcceptDialog"]
+title = "Settings"
+size = Vector2i(500, 400)
+
+[node name="VBox" type="VBoxContainer" parent="."]
+
+[node name="ProviderLabel" type="Label" parent="VBox"]
+text = "Provider:"
+
+[node name="ProviderOpt" type="OptionButton" parent="VBox"]
+
+[node name="BaseUrlLabel" type="Label" parent="VBox"]
+text = "Base URL (optional):"
+
+[node name="BaseUrlInput" type="LineEdit" parent="VBox"]
+placeholder_text = "https://..."
+
+[node name="ModelLabel" type="Label" parent="VBox"]
+text = "Model:"
+
+[node name="ModelInput" type="LineEdit" parent="VBox"]
+placeholder_text = "gpt-4o"
+
+[node name="ApiKeyLabel" type="Label" parent="VBox"]
+text = "API Key:"
+
+[node name="ApiKeyInput" type="LineEdit" parent="VBox"]
+placeholder_text = "sk-..."
+secret = true
+
+[node name="PermLabel" type="Label" parent="VBox"]
+text = "Permission Mode:"
+
+[node name="PermOpt" type="OptionButton" parent="VBox"]
+
+[node name="WorkDirLabel" type="Label" parent="VBox"]
+text = "Working Directory:"
+
+[node name="WorkDirInput" type="LineEdit" parent="VBox"]
+placeholder_text = "/path/to/project"

@@ -1,0 +1,51 @@
+[gd_scene format=3]
+
+[node name="Sidebar" type="VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(200, 0)
+
+[node name="SessionsLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Sessions"
+
+[node name="SessionList" type="ItemList" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HSep" type="HSeparator" parent="."]
+layout_mode = 2
+
+[node name="SettingsLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Settings"
+
+[node name="ProviderLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Provider:"
+
+[node name="ProviderOpt" type="OptionButton" parent="."]
+layout_mode = 2
+
+[node name="ModelLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Model:"
+
+[node name="ModelInput" type="LineEdit" parent="."]
+layout_mode = 2
+placeholder_text = "Model name"
+
+[node name="ApiKeyLabel" type="Label" parent="."]
+layout_mode = 2
+text = "API Key:"
+
+[node name="ApiKeyInput" type="LineEdit" parent="."]
+layout_mode = 2
+placeholder_text = "API Key"
+secret = true
+
+[node name="PermLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Permission Mode:"
+
+[node name="PermModeOpt" type="OptionButton" parent="."]
+layout_mode = 2

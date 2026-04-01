@@ -1,0 +1,18 @@
+[gd_resource type="Theme" format=3]
+
+[resource]
+
+default_font_size = 14
+
+ChatBgColor = Color(0.12, 0.12, 0.16, 1)
+UserBubbleColor = Color(0.2, 0.22, 0.3, 1)
+AgentBubbleColor = Color(0.15, 0.15, 0.2, 1)
+ToolCallColor = Color(0.18, 0.18, 0.24, 1)
+ToolResultColor = Color(0.1, 0.1, 0.14, 1)
+AccentColor = Color(0.9, 0.22, 0.27, 1)
+TextColor = Color(0.88, 0.88, 0.92, 1)
+DimTextColor = Color(0.5, 0.5, 0.58, 1)
+PanelBgColor = Color(0.1, 0.1, 0.14, 1)
+SidebarBgColor = Color(0.08, 0.08, 0.12, 1)
+StatusBarBgColor = Color(0.06, 0.06, 0.1, 1)
+BorderColor = Color(0.2, 0.2, 0.28, 1)
