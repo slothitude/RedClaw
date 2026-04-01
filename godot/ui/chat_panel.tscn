@@ -1,0 +1,26 @@
+[gd_scene format=3]
+
+[node name="ChatPanel" type="VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ChatScroll" type="ScrollContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ChatMessages" type="VBoxContainer" parent="ChatScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="InputBar" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="InputField" type="TextEdit" parent="InputBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 40)
+wrap_mode = 2
+
+[node name="SendButton" type="Button" parent="InputBar"]
+layout_mode = 2
+text = "Send"

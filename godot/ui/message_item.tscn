@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[node name="MessageItem" type="PanelContainer"]
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="RoleLabel" type="Label" parent="VBox"]
+layout_mode = 2
+text = "User"
+
+[node name="ContentLabel" type="RichTextLabel" parent="VBox"]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_following = true
+custom_minimum_size = Vector2(0, 40)
+size_flags_vertical = 3
