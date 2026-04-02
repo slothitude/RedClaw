@@ -97,6 +97,30 @@ class TelegramSession:
         )
         self.current_task: asyncio.Task | None = None
 
+    async def init_mcp(self) -> None:
+        """Discover and register MCP tools."""
+        if not self.mcp_servers:
+            return
+        from redclaw.mcp_client import MCPClient, MCPServerConfig
+        configs = [MCPServerConfig(name=f"mcp-{i}", url=url) for i, url in enumerate(self.mcp_servers)]
+        self.mcp_client = MCPClient(configs)
+        try:
+            tools = await self.mcp_client.discover()
+            for tool in tools:
+                from redclaw.api.types import PermissionLevel
+                from redclaw.tools.registry import ToolSpec
+                spec = ToolSpec(
+                    name=tool.name,
+                    description=tool.description,
+                    input_schema=tool.input_schema,
+                    permission=PermissionLevel.READ_ONLY,
+                    execute=lambda *args, _name=tool.name, **kw: self.mcp_client.call_tool(_name, kw),
+                )
+                self.tools.specs[tool.name] = spec
+            logger.info(f"Registered {len(tools)} MCP tools for user {self.user_id}")
+        except Exception as e:
+            logger.error(f"MCP discovery failed for user {self.user_id}: {e}")
+
     async def close(self) -> None:
         await self.client.close()
 
@@ -140,7 +164,10 @@ class RedClawTelegramBot:
                 perm_mode=self.perm_mode,
                 search_url=self.search_url,
                 reader_url=self.reader_url,
+                mcp_servers=self.mcp_servers,
             )
+            # Schedule MCP discovery in background
+            asyncio.create_task(self.sessions[user_id].init_mcp())
         return self.sessions[user_id]
 
     def _check_user(self, update: Update) -> bool:
