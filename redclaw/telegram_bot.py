@@ -98,28 +98,41 @@ class TelegramSession:
         self.current_task: asyncio.Task | None = None
 
     async def init_mcp(self) -> None:
-        """Discover and register MCP tools."""
+        """Discover and register MCP tools, retrying failed servers."""
         if not self.mcp_servers:
             return
         from redclaw.mcp_client import MCPClient, MCPServerConfig
         configs = [MCPServerConfig(name=f"mcp-{i}", url=url) for i, url in enumerate(self.mcp_servers)]
         self.mcp_client = MCPClient(configs)
-        try:
-            tools = await self.mcp_client.discover()
-            for tool in tools:
-                from redclaw.api.types import PermissionLevel
-                from redclaw.tools.registry import ToolSpec
-                spec = ToolSpec(
-                    name=tool.name,
-                    description=tool.description,
-                    input_schema=tool.input_schema,
-                    permission=PermissionLevel.READ_ONLY,
-                    execute=lambda *args, _name=tool.name, **kw: self.mcp_client.call_tool(_name, kw),
-                )
-                self.tools.specs[tool.name] = spec
-            logger.info(f"Registered {len(tools)} MCP tools for user {self.user_id}")
-        except Exception as e:
-            logger.error(f"MCP discovery failed for user {self.user_id}: {e}")
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                tools = await self.mcp_client.discover()
+                for tool in tools:
+                    from redclaw.api.types import PermissionLevel
+                    from redclaw.tools.registry import ToolSpec
+                    spec = ToolSpec(
+                        name=tool.name,
+                        description=tool.description,
+                        input_schema=tool.input_schema,
+                        permission=PermissionLevel.READ_ONLY,
+                        execute=lambda *args, _name=tool.name, **kw: self.mcp_client.call_tool(_name, kw),
+                    )
+                    self.tools.specs[tool.name] = spec
+                logger.info(f"Registered {len(tools)} MCP tools for user {self.user_id}")
+            except Exception as e:
+                logger.error(f"MCP discovery failed for user {self.user_id}: {e}")
+
+            # Check if all servers connected
+            connected = len(self.mcp_client._connections)
+            if connected >= len(configs):
+                break
+            if attempt < max_attempts:
+                logger.info(f"MCP: {connected}/{len(configs)} servers connected, retrying in 5s...")
+                await asyncio.sleep(5)
+                # Reset failed connections for retry
+                self.mcp_client = MCPClient(configs)
 
     async def close(self) -> None:
         await self.client.close()
@@ -196,8 +209,14 @@ class RedClawTelegramBot:
             "/usage — Token usage stats\n"
             "/session — Current session info\n"
             "/new — New session\n"
+            "/clear — Clear session history\n"
             "/compact — Compact history\n"
             "/model [name] — Show/set model\n"
+            "/provider [name] — Show/set provider\n"
+            "/perms [mode] — Show/set permission mode\n"
+            "/memory [query] — Recall/search memories\n"
+            "/skills — List available skills\n"
+            "/crypt — Wisdom inheritance stats\n"
             "/abort — Abort current turn\n"
             "/get <path> — Download file\n"
             "/getzip <path> — Download directory as zip\n"
@@ -218,8 +237,14 @@ class RedClawTelegramBot:
             "/usage — Token usage stats\n"
             "/session — Current session info\n"
             "/new — Start a new session\n"
+            "/clear — Clear session history\n"
             "/compact — Compact conversation history\n"
             "/model [name] — Show or set model\n"
+            "/provider [name] — Show or set provider\n"
+            "/perms [mode] — Show or set permission mode\n"
+            "/memory [query] — Recall or search memories\n"
+            "/skills — List available skills\n"
+            "/crypt — Wisdom inheritance stats\n"
             "/abort — Abort current turn\n"
             "/get <path> — Download a file\n"
             "/getzip <path> — Download directory as zip\n"
@@ -265,6 +290,106 @@ class RedClawTelegramBot:
         s = self._get_session(update.effective_user.id)
         compact_session(s.session)
         await self._send_reply(update, "Session compacted.")
+
+    async def cmd_clear(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        s.session.messages.clear()
+        await self._send_reply(update, "Session history cleared.")
+
+    async def cmd_provider(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        text = update.message.text or ""
+        parts = text.split(maxsplit=1)
+        if len(parts) > 1:
+            new_provider = parts[1].strip()
+            try:
+                from redclaw.api.providers import get_provider
+                s.provider = get_provider(new_provider, None)
+                s.provider_name = new_provider
+                await self._send_reply(update, f"Provider set to: {new_provider}")
+            except Exception as e:
+                await self._send_reply(update, f"Error setting provider: {e}")
+        else:
+            await self._send_reply(update, f"Current provider: {s.provider_name}")
+
+    async def cmd_perms(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        text = update.message.text or ""
+        parts = text.split(maxsplit=1)
+        valid_modes = ["ask", "read_only", "workspace_write", "danger_full_access"]
+        if len(parts) > 1:
+            new_mode = parts[1].strip()
+            if new_mode not in valid_modes:
+                await self._send_reply(update, f"Invalid mode. Options: {', '.join(valid_modes)}")
+                return
+            from redclaw.runtime.permissions import PermissionMode
+            s.policy.mode = PermissionMode(new_mode)
+            await self._send_reply(update, f"Permission mode set to: {new_mode}")
+        else:
+            await self._send_reply(update, f"Permission mode: {s.policy.mode.value}")
+
+    async def cmd_memory(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        try:
+            from redclaw.tools.memory import get_memory_manager
+            mgr = get_memory_manager()
+            text = update.message.text or ""
+            parts = text.split(maxsplit=1)
+            query = parts[1].strip() if len(parts) > 1 else ""
+            if query:
+                result = await mgr.recall(query)
+            else:
+                result = await mgr.recall()
+            await self._send_reply(update, result)
+        except Exception as e:
+            await self._send_reply(update, f"Memory error: {e}")
+
+    async def cmd_skills(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        try:
+            from redclaw.skills.agent_tools import execute_skills_list
+            result = await execute_skills_list()
+            await self._send_reply(update, result)
+        except ImportError:
+            await self._send_reply(update, "Skills system not available (PyYAML required).")
+        except Exception as e:
+            await self._send_reply(update, f"Skills error: {e}")
+
+    async def cmd_crypt(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        try:
+            from redclaw.crypt import Crypt
+            crypt = Crypt()
+            m = crypt.metrics
+            lines = [
+                f"Crypt Metrics:",
+                f"  Total tasks: {m.tasks_total}",
+                f"  Success: {m.tasks_success} | Failed: {m.tasks_failed}",
+            ]
+            if m.by_type:
+                for type_name, stats in m.by_type.items():
+                    rate = (stats['success'] / stats['total'] * 100) if stats['total'] else 0
+                    lines.append(f"  {type_name}: {stats['total']} tasks, {rate:.0f}% success")
+            # Show dharma preview
+            dharma = crypt.load_dharma()
+            if dharma:
+                preview = dharma.strip().split("\n")[-3:]
+                lines.append(f"\nRecent dharma:")
+                lines.extend(f"  {l.strip()}" for l in preview if l.strip())
+            if len(lines) <= 3:
+                lines.append("\nNo crypt data yet. Subagent runs will populate this.")
+            await self._send_reply(update, "\n".join(lines))
+        except Exception as e:
+            await self._send_reply(update, f"Crypt error: {e}")
 
     async def cmd_model(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
@@ -603,8 +728,14 @@ class RedClawTelegramBot:
         app.add_handler(CommandHandler("usage", self.cmd_usage))
         app.add_handler(CommandHandler("session", self.cmd_session))
         app.add_handler(CommandHandler("new", self.cmd_new))
+        app.add_handler(CommandHandler("clear", self.cmd_clear))
         app.add_handler(CommandHandler("compact", self.cmd_compact))
         app.add_handler(CommandHandler("model", self.cmd_model))
+        app.add_handler(CommandHandler("provider", self.cmd_provider))
+        app.add_handler(CommandHandler("perms", self.cmd_perms))
+        app.add_handler(CommandHandler("memory", self.cmd_memory))
+        app.add_handler(CommandHandler("skills", self.cmd_skills))
+        app.add_handler(CommandHandler("crypt", self.cmd_crypt))
         app.add_handler(CommandHandler("abort", self.cmd_abort))
         app.add_handler(CommandHandler("get", self.cmd_get))
         app.add_handler(CommandHandler("getzip", self.cmd_getzip))
