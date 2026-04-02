@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -62,11 +63,13 @@ class TelegramSession:
 
     def __init__(self, user_id: int, working_dir: str, provider_name: str,
                  model: str, base_url: str | None, perm_mode: str,
-                 search_url: str | None = None, reader_url: str | None = None):
+                 search_url: str | None = None, reader_url: str | None = None,
+                 mcp_servers: list[str] | None = None):
         self.user_id = user_id
         self.working_dir = working_dir
         self.provider_name = provider_name
         self.model = model
+        self.mcp_servers = mcp_servers or []
 
         cwd = working_dir
         self.provider = get_provider(provider_name, base_url)
@@ -78,6 +81,7 @@ class TelegramSession:
         self.session.working_dir = cwd
 
         self.tools = ToolExecutor(working_dir=cwd, search_url=search_url, reader_url=reader_url)
+        self.mcp_client: Any = None
         self.policy = PermissionPolicy(mode=PermissionMode(perm_mode))
         self.tracker = UsageTracker()
 
@@ -111,6 +115,7 @@ class RedClawTelegramBot:
         perm_mode: str = "ask",
         search_url: str | None = None,
         reader_url: str | None = None,
+        mcp_servers: list[str] | None = None,
     ):
         self.token = token
         self.allowed_user_id = allowed_user_id
@@ -121,6 +126,7 @@ class RedClawTelegramBot:
         self.perm_mode = perm_mode
         self.search_url = search_url
         self.reader_url = reader_url
+        self.mcp_servers = mcp_servers or []
         self.sessions: dict[int, TelegramSession] = {}
 
     def _get_session(self, user_id: int) -> TelegramSession:
@@ -171,7 +177,8 @@ class RedClawTelegramBot:
             "/ls [path] — List files\n"
             "/run <cmd> — Direct bash command\n"
             "/files — List uploaded files\n"
-            "/status — Connection + agent status"
+            "/status — Connection + agent status\n"
+            "/restart — Restart bot (reloads MCP servers)"
         ))
 
     async def cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -381,14 +388,30 @@ class RedClawTelegramBot:
             return
         s = self._get_session(update.effective_user.id)
         busy = s.current_task is not None and not s.current_task.done()
+        mcp_count = len(s.mcp_servers) if s.mcp_servers else 0
         await self._send_reply(update, (
             f"Status: {'busy' if busy else 'idle'}\n"
             f"Session: {s.session.id}\n"
             f"Model: {s.rt.model}\n"
             f"Provider: {s.provider_name}\n"
             f"Messages: {len(s.session.messages)}\n"
+            f"MCP servers: {mcp_count}\n"
             f"{s.tracker.summary()}"
         ))
+
+    async def cmd_restart(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        await self._send_reply(update, "Restarting bot... See you on the other side!")
+        # Close all sessions
+        for s in self.sessions.values():
+            try:
+                await s.close()
+            except Exception:
+                pass
+        self.sessions.clear()
+        # Re-exec the process with the same arguments
+        os.execv(sys.executable, sys.argv)
 
     # ── Message Handlers ─────────────────────────────────────
 
@@ -554,6 +577,7 @@ class RedClawTelegramBot:
         app.add_handler(CommandHandler("run", self.cmd_run))
         app.add_handler(CommandHandler("files", self.cmd_files))
         app.add_handler(CommandHandler("status", self.cmd_status))
+        app.add_handler(CommandHandler("restart", self.cmd_restart))
 
         # Message handlers
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text_message))
