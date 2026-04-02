@@ -78,6 +78,13 @@ PROVIDERS: dict[str, ProviderConfig] = {
         stream_path="/v1/chat/completions",
         message_format="openai",
     ),
+    "zai": ProviderConfig(
+        name="zai",
+        base_url="https://api.z.ai/api/coding/paas/v4",
+        api_key_env="ZAI_API_KEY",
+        stream_path="/chat/completions",
+        message_format="openai",
+    ),
 }
 
 

@@ -1,11 +1,15 @@
-"""Search tools — glob and grep."""
+"""Search tools — glob, grep, and web search."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 from pathlib import Path
+from typing import Any
+
+import httpx
 
 
 def _resolve(path: str | None, cwd: str) -> Path:
@@ -72,3 +76,40 @@ async def execute_grep_search(
         return f"No matches for '{pattern}' in {base}"
     header = f"Found {len(results)} match(es) for '{pattern}' in {base}:"
     return header + "\n" + "\n".join(results)
+
+
+async def execute_web_search(
+    query: str,
+    categories: str | None = None,
+    search_url: str | None = None,
+    **kwargs: Any,
+) -> str:
+    """Search the web using a SearXNG instance."""
+    url = search_url or os.environ.get("REDCLAW_SEARCH_URL", "http://100.84.161.63:8080")
+    params: dict[str, Any] = {
+        "q": query,
+        "format": "json",
+    }
+    if categories:
+        params["categories"] = categories
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(f"{url}/search", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+
+        results = data.get("results", [])
+        if not results:
+            return f"No results for '{query}'"
+
+        lines = [f"Web search results for '{query}':\n"]
+        for i, r in enumerate(results[:10], 1):
+            title = r.get("title", "Untitled")
+            link = r.get("url", "")
+            snippet = r.get("content", "")
+            lines.append(f"{i}. {title}\n   {link}\n   {snippet}\n")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error searching: {e}"

@@ -24,15 +24,15 @@ class ToolSpec:
 # ── Tool Definitions ─────────────────────────────────────────
 
 
-def mvp_tool_specs(working_dir: str | None = None) -> list[ToolSpec]:
-    """Return the 6 MVP tool specs."""
+def mvp_tool_specs(working_dir: str | None = None, search_url: str | None = None) -> list[ToolSpec]:
+    """Return the MVP tool specs plus optional web_search."""
     from redclaw.tools.bash import execute_bash
     from redclaw.tools.file_ops import execute_read_file, execute_write_file, execute_edit_file
-    from redclaw.tools.search import execute_glob_search, execute_grep_search
+    from redclaw.tools.search import execute_glob_search, execute_grep_search, execute_web_search
 
     cwd = working_dir or str(Path.cwd())
 
-    return [
+    specs = [
         ToolSpec(
             name="bash",
             description="Execute a bash command with a timeout. Returns stdout, stderr, and exit code.",
@@ -123,12 +123,41 @@ def mvp_tool_specs(working_dir: str | None = None) -> list[ToolSpec]:
         ),
     ]
 
+    # Add web_search if search_url is configured
+    if search_url:
+        specs.append(ToolSpec(
+            name="web_search",
+            description="Search the web using SearXNG. Returns search results with titles, URLs, and snippets.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "categories": {"type": "string", "description": "Categories to search (e.g. 'general', 'news', 'images')"},
+                },
+                "required": ["query"],
+            },
+            permission=PermissionLevel.READ_ONLY,
+            execute=lambda **kw: execute_web_search(search_url=search_url, **kw),
+        ))
+
+    return specs
+
 
 class ToolExecutor:
     """Dispatches tool calls to their implementations."""
 
-    def __init__(self, working_dir: str | None = None) -> None:
-        self.specs = {s.name: s for s in mvp_tool_specs(working_dir)}
+    def __init__(
+        self,
+        working_dir: str | None = None,
+        search_url: str | None = None,
+    ) -> None:
+        self.specs: dict[str, ToolSpec] = {
+            s.name: s for s in mvp_tool_specs(working_dir, search_url)
+        }
+
+    def register_tool(self, spec: ToolSpec) -> None:
+        """Register a dynamic tool (from skills, MCP, etc.)."""
+        self.specs[spec.name] = spec
 
     def get_tool_definitions(self) -> list[dict[str, Any]]:
         """Get tool definitions for the API request."""
