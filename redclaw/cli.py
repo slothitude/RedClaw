@@ -42,15 +42,38 @@ def build_parser() -> argparse.ArgumentParser:
         description="RedClaw — a minimal AI coding agent",
     )
     p.add_argument("prompt", nargs="?", help="Initial prompt (omit for interactive REPL)")
-    p.add_argument("--provider", default="openai", help="LLM provider (openai, anthropic, ollama, groq, deepseek, openrouter, or custom)")
+    p.add_argument("--provider", default="openai", help="LLM provider (openai, anthropic, ollama, groq, deepseek, openrouter, zai, or custom)")
     p.add_argument("--model", default="", help="Model name (provider default if omitted)")
     p.add_argument("--base-url", default=None, help="Custom API base URL")
     p.add_argument("--permission-mode", choices=["read_only", "workspace_write", "danger_full_access", "ask"], default="ask", help="Permission mode")
     p.add_argument("--session", default=None, help="Resume session ID")
     p.add_argument("--working-dir", default=None, help="Working directory (default: cwd)")
-    p.add_argument("--mode", choices=["repl", "rpc"], default="repl", help="Run mode: repl or rpc (for Godot)")
+    p.add_argument("--mode", choices=["repl", "rpc", "telegram", "webchat"], default="repl", help="Run mode: repl, rpc, telegram, or webchat")
     p.add_argument("--max-tokens", type=int, default=8192, help="Max output tokens")
     p.add_argument("--verbose", action="store_true", help="Verbose logging")
+
+    # Telegram options
+    tg = p.add_argument_group("Telegram")
+    tg.add_argument("--telegram-token", default=None, help="Telegram bot token (or set REDCLAW_TELEGRAM_TOKEN)")
+    tg.add_argument("--telegram-user-id", type=int, default=None, help="Restrict to a single Telegram user ID (or set REDCLAW_TELEGRAM_USER_ID)")
+
+    # WebChat options
+    wc = p.add_argument_group("WebChat")
+    wc.add_argument("--port", type=int, default=8080, help="WebChat port (default: 8080)")
+
+    # Skills
+    sk = p.add_argument_group("Skills")
+    sk.add_argument("--skills-dir", nargs="*", default=None, help="Directories to search for skills")
+
+    # MCP / Voice
+    mcp = p.add_argument_group("MCP")
+    mcp.add_argument("--mcp-servers", nargs="*", default=None, help="MCP SSE server URLs")
+    mcp.add_argument("--tts-url", default=None, help="TTS MCP server URL")
+    mcp.add_argument("--stt-url", default=None, help="STT MCP server URL")
+
+    # Web search
+    p.add_argument("--search-url", default=None, help="SearXNG instance URL (e.g. http://100.84.161.63:8080)")
+
     return p
 
 
@@ -62,6 +85,7 @@ def _default_model(provider: str) -> str:
         "groq": "llama-3.3-70b-versatile",
         "deepseek": "deepseek-chat",
         "openrouter": "anthropic/claude-sonnet-4-20250514",
+        "zai": "glm-5.1",
     }
     return defaults.get(provider, "gpt-4o")
 
@@ -74,6 +98,8 @@ async def _run_repl(
     session_id: str | None,
     working_dir: str | None,
     initial_prompt: str | None,
+    skills_dirs: list[str] | None = None,
+    search_url: str | None = None,
 ) -> None:
     """Run the interactive REPL."""
     cwd = working_dir or str(Path.cwd())
@@ -93,9 +119,13 @@ async def _run_repl(
     session.provider = provider_name
     session.working_dir = cwd
 
-    tools = ToolExecutor(working_dir=cwd)
+    tools = ToolExecutor(working_dir=cwd, search_url=search_url)
     policy = PermissionPolicy(mode=PermissionMode(perm_mode))
     tracker = UsageTracker()
+
+    # Load skills
+    if skills_dirs:
+        _load_skills(skills_dirs, tools)
 
     rt = ConversationRuntime(
         client=client,
@@ -135,6 +165,18 @@ async def _run_repl(
         await _process_input(rt, user_input, tracker)
 
     await client.close()
+
+
+def _load_skills(skills_dirs: list[str], tools: ToolExecutor) -> None:
+    """Load skills from directories and register their tools."""
+    try:
+        from redclaw.skills.loader import discover_skills, register_skill_tools
+        skills = discover_skills(skills_dirs)
+        if skills:
+            register_skill_tools(skills, tools)
+            console.print(f"[dim]Loaded {len(skills)} skill(s)[/]")
+    except ImportError:
+        console.print("[yellow]PyYAML not installed. Skills unavailable.[/]")
 
 
 async def _process_input(rt: ConversationRuntime, user_input: str, tracker: UsageTracker) -> None:
@@ -248,6 +290,33 @@ def main() -> int | None:
             session_id=args.session,
             working_dir=args.working_dir,
         ))
+    elif args.mode == "telegram":
+        from redclaw.telegram_bot import RedClawTelegramBot
+        token = args.telegram_token or os.environ.get("REDCLAW_TELEGRAM_TOKEN", "")
+        user_id = args.telegram_user_id or int(os.environ.get("REDCLAW_TELEGRAM_USER_ID", "0")) or None
+        if not token:
+            console.print("[red]Error: --telegram-token or REDCLAW_TELEGRAM_TOKEN required[/]")
+            return 1
+        bot = RedClawTelegramBot(
+            token=token,
+            allowed_user_id=user_id,
+            working_dir=args.working_dir,
+            provider_name=args.provider,
+            model=model,
+            base_url=args.base_url,
+            perm_mode=args.permission_mode,
+        )
+        asyncio.run(bot.run())
+    elif args.mode == "webchat":
+        from redclaw.webchat import run_webchat
+        asyncio.run(run_webchat(
+            provider_name=args.provider,
+            model=model,
+            base_url=args.base_url,
+            perm_mode=args.permission_mode,
+            working_dir=args.working_dir,
+            port=args.port,
+        ))
     else:
         asyncio.run(_run_repl(
             provider_name=args.provider,
@@ -257,6 +326,8 @@ def main() -> int | None:
             session_id=args.session,
             working_dir=args.working_dir,
             initial_prompt=args.prompt,
+            skills_dirs=args.skills_dir,
+            search_url=args.search_url,
         ))
 
     return 0

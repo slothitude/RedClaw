@@ -1,0 +1,14 @@
+name: weather
+description: Get weather forecasts for any location
+version: "1.0"
+tools:
+  - name: get_weather
+    description: Get current weather for a location
+    parameters:
+      type: object
+      properties:
+        location:
+          type: string
+          description: City name or coordinates
+      required:
+        - location
