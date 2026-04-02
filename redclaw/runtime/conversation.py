@@ -82,6 +82,8 @@ class ConversationRuntime:
         working_dir: str | None = None,
         system_prompt: str | None = None,
         max_tool_rounds: int = 50,
+        memory: Any | None = None,
+        subagent_spawner: Any | None = None,
     ) -> None:
         self.client = client
         self.provider = provider
@@ -96,11 +98,20 @@ class ConversationRuntime:
         self._system_prompt = system_prompt
         self.max_tool_rounds = max_tool_rounds
         self._abort = False
+        self.memory = memory
+        self.subagent_spawner = subagent_spawner
 
     @property
     def system_prompt(self) -> str:
         if self._system_prompt is None:
-            self._system_prompt = build_system_prompt(self.working_dir)
+            memory_snapshot = ""
+            if self.memory:
+                memory_snapshot = self.memory.snapshot
+            self._system_prompt = build_system_prompt(
+                self.working_dir,
+                memory_snapshot=memory_snapshot,
+                skills_guidance=hasattr(self.tools.specs, 'get') and 'skills_list' in self.tools.specs,
+            )
         return self._system_prompt
 
     def abort(self) -> None:

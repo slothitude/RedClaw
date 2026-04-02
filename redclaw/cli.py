@@ -64,16 +64,26 @@ def build_parser() -> argparse.ArgumentParser:
     # Skills
     sk = p.add_argument_group("Skills")
     sk.add_argument("--skills-dir", nargs="*", default=None, help="Directories to search for skills")
+    sk.add_argument("--skills-manage", action="store_true", help="Enable agent skill CRUD tools")
+
+    # Memory
+    mem = p.add_argument_group("Memory")
+    mem.add_argument("--memory-dir", default=None, help="Memory directory (default: ~/.redclaw/memory)")
+
+    # Advanced
+    adv = p.add_argument_group("Advanced")
+    adv.add_argument("--compact-llm", action="store_true", help="Enable LLM-based context compaction")
+    adv.add_argument("--subagent", action="store_true", help="Enable subagent delegation")
 
     # MCP / Voice
     mcp = p.add_argument_group("MCP")
-    mcp.add_argument("--mcp-servers", nargs="*", default=None, help="MCP SSE server URLs")
+    mcp.add_argument("--mcp-servers", nargs="*", default=["http://localhost:8006/sse", "http://localhost:8007/sse"], help="MCP SSE server URLs")
     mcp.add_argument("--tts-url", default=None, help="TTS MCP server URL")
     mcp.add_argument("--stt-url", default=None, help="STT MCP server URL")
 
     # Web search
-    p.add_argument("--search-url", default=None, help="SearXNG instance URL (e.g. http://100.84.161.63:8080)")
-    p.add_argument("--reader-url", default=None, help="Web Reader API URL (e.g. http://100.84.161.63:8003)")
+    p.add_argument("--search-url", default="http://localhost:8888", help="SearXNG instance URL")
+    p.add_argument("--reader-url", default="http://localhost:8003/sse", help="Web Reader API URL")
 
     return p
 
@@ -100,8 +110,12 @@ async def _run_repl(
     working_dir: str | None,
     initial_prompt: str | None,
     skills_dirs: list[str] | None = None,
+    skills_manage: bool = False,
     search_url: str | None = None,
     reader_url: str | None = None,
+    memory_dir: str | None = None,
+    compact_llm: bool = False,
+    enable_subagent: bool = False,
 ) -> None:
     """Run the interactive REPL."""
     cwd = working_dir or str(Path.cwd())
@@ -129,6 +143,56 @@ async def _run_repl(
     if skills_dirs:
         _load_skills(skills_dirs, tools)
 
+    # Skills CRUD tools
+    memory_mgr = None
+    if skills_manage:
+        _register_skills_tools(tools)
+
+    # Memory system
+    if memory_dir is not None or skills_manage:
+        from redclaw.tools.memory import MemoryManager, execute_memory
+        memory_mgr = MemoryManager(memory_dir)
+        from redclaw.api.types import PermissionLevel
+        from redclaw.tools.registry import ToolSpec
+        tools.register_tool(ToolSpec(
+            name="memory",
+            description="Persistent memory tool. Actions: recall, store, search. Store memories for cross-session persistence.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Operation: recall, store, search"},
+                    "content": {"type": "string", "description": "Content to store (for 'store' action)"},
+                    "category": {"type": "string", "description": "Category/section (default: General)", "default": "General"},
+                    "query": {"type": "string", "description": "Search query (for recall/search)"},
+                },
+                "required": ["action"],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=lambda **kw: execute_memory(memory_dir=memory_dir, **kw),
+        ))
+
+    # Subagent system
+    subagent_spawner = None
+    if enable_subagent:
+        from redclaw.runtime.subagent import SubagentSpawner, execute_subagent
+        subagent_spawner = SubagentSpawner(client, provider, model, tools)
+        from redclaw.api.types import PermissionLevel
+        from redclaw.tools.registry import ToolSpec
+        tools.register_tool(ToolSpec(
+            name="subagent",
+            description="Delegate a task to an isolated sub-agent. Provide a single task or newline-separated tasks for batch.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Single task description"},
+                    "tasks": {"type": "string", "description": "Newline-separated tasks for batch execution"},
+                },
+                "required": ["task"],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=lambda **kw: execute_subagent(spawner=subagent_spawner, **kw),
+        ))
+
     rt = ConversationRuntime(
         client=client,
         provider=provider,
@@ -138,6 +202,8 @@ async def _run_repl(
         permission_policy=policy,
         usage_tracker=tracker,
         working_dir=cwd,
+        memory=memory_mgr,
+        subagent_spawner=subagent_spawner,
     )
 
     console.print(f"[bold red]RedClaw[/] {provider_name}/{model}")
@@ -179,6 +245,55 @@ def _load_skills(skills_dirs: list[str], tools: ToolExecutor) -> None:
             console.print(f"[dim]Loaded {len(skills)} skill(s)[/]")
     except ImportError:
         console.print("[yellow]PyYAML not installed. Skills unavailable.[/]")
+
+
+def _register_skills_tools(tools: ToolExecutor) -> None:
+    """Register agent-facing skill CRUD tools."""
+    from redclaw.api.types import PermissionLevel
+    from redclaw.tools.registry import ToolSpec
+    from redclaw.skills.agent_tools import execute_skills_list, execute_skill_view, execute_skill_manage
+
+    tools.register_tool(ToolSpec(
+        name="skills_list",
+        description="List all discovered skills with metadata.",
+        input_schema={
+            "type": "object",
+            "properties": {},
+        },
+        permission=PermissionLevel.READ_ONLY,
+        execute=lambda **kw: execute_skills_list(**kw),
+    ))
+    tools.register_tool(ToolSpec(
+        name="skill_view",
+        description="View skill content. detail: metadata, full, or references.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Skill name"},
+                "detail": {"type": "string", "description": "Detail level: metadata, full, references", "default": "metadata"},
+            },
+            "required": ["name"],
+        },
+        permission=PermissionLevel.READ_ONLY,
+        execute=lambda **kw: execute_skill_view(**kw),
+    ))
+    tools.register_tool(ToolSpec(
+        name="skill_manage",
+        description="Create, update, patch, or delete skills. action: create, update, patch, delete.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "Action: create, update, patch, delete"},
+                "name": {"type": "string", "description": "Skill name"},
+                "description": {"type": "string", "description": "Skill description"},
+                "instructions": {"type": "string", "description": "Skill instructions (markdown body)"},
+                "version": {"type": "string", "description": "Version string", "default": "1.0"},
+            },
+            "required": ["action", "name"],
+        },
+        permission=PermissionLevel.WORKSPACE_WRITE,
+        execute=lambda **kw: execute_skill_manage(**kw),
+    ))
 
 
 async def _process_input(rt: ConversationRuntime, user_input: str, tracker: UsageTracker) -> None:
@@ -332,8 +447,12 @@ def main() -> int | None:
             working_dir=args.working_dir,
             initial_prompt=args.prompt,
             skills_dirs=args.skills_dir,
+            skills_manage=args.skills_manage,
             search_url=args.search_url,
             reader_url=args.reader_url,
+            memory_dir=args.memory_dir,
+            compact_llm=args.compact_llm,
+            enable_subagent=args.subagent,
         ))
 
     return 0

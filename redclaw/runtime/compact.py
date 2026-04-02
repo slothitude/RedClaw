@@ -1,14 +1,22 @@
 """Compaction: summarize old messages to keep context window manageable.
 
-Uses deterministic summarization (truncation + metadata) — no LLM call needed.
+Uses deterministic summarization (truncation + metadata) by default.
+Optionally uses LLM-based summarization for richer context preservation.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from redclaw.api.types import TextBlock, ToolResultBlock, ToolUseBlock
 from redclaw.runtime.session import ConversationMessage, Session
+
+if TYPE_CHECKING:
+    from redclaw.api.client import LLMClient
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -108,3 +116,106 @@ def truncate_tool_results(
                     is_error=block.is_error,
                 )
     return messages
+
+
+# ── LLM-based compaction ─────────────────────────────────────
+
+
+def _extract_text_from_messages(messages: list[ConversationMessage], max_chars: int = 200) -> str:
+    """Extract a compact text representation of messages for LLM summarization."""
+    parts: list[str] = []
+    for msg in messages:
+        from redclaw.api.types import Role
+        role = msg.role.value
+        text = msg.text_content()[:max_chars]
+        tools_used = [b.name for b in msg.content if isinstance(b, ToolUseBlock)]
+        if text:
+            parts.append(f"[{role}] {text}")
+        if tools_used:
+            parts.append(f"  tools: {', '.join(tools_used)}")
+    return "\n".join(parts)
+
+
+async def compact_session_with_llm(
+    session: Session,
+    client: LLMClient,
+    model: str,
+    config: CompactionConfig | None = None,
+) -> Session:
+    """Compact a session using LLM-generated summary of pruned messages.
+
+    Strategy:
+    1. Prune old large tool results (>200 chars, keep last N)
+    2. Protect head (system prompt + first exchange) and tail (recent messages)
+    3. Generate structured LLM summary of pruned middle content
+    4. Replace pruned messages with summary
+    """
+    from redclaw.api.types import InputMessage, MessageRequest, Role
+
+    cfg = config or CompactionConfig()
+    msgs = session.messages
+
+    if len(msgs) <= cfg.keep_recent + 2:
+        return session  # not enough to compact
+
+    # Protect head (first message) and tail
+    first = msgs[0]
+    recent = msgs[len(msgs) - cfg.keep_recent :]
+    middle = msgs[1 : len(msgs) - cfg.keep_recent]
+
+    if not middle:
+        return session
+
+    # Truncate large tool results in the middle before summarizing
+    truncate_tool_results(middle, max_chars=200)
+
+    # Build text for LLM summarization
+    middle_text = _extract_text_from_messages(middle)
+
+    if not middle_text.strip():
+        # Fall back to deterministic compaction
+        return compact_session(session, cfg)
+
+    # Ask the LLM to summarize
+    summary_prompt = (
+        "Summarize the following conversation excerpt into a structured summary.\n"
+        "Format:\n"
+        "Goal: <what the user is trying to accomplish>\n"
+        "Progress: <what has been done so far>\n"
+        "Decisions: <key decisions made>\n"
+        "Next Steps: <what remains to be done>\n\n"
+        f"Conversation:\n{middle_text[:8000]}"
+    )
+
+    try:
+        from redclaw.api.providers import ProviderConfig
+        request = MessageRequest(
+            model=model,
+            messages=[
+                InputMessage.user_text(summary_prompt),
+            ],
+            max_tokens=1024,
+            stream=False,
+        )
+        # Collect the full response
+        result_text = ""
+        async for event in client.stream_message(request):
+            if event.type.value == "text_delta":
+                result_text += event.text_delta
+
+        if not result_text.strip():
+            return compact_session(session, cfg)
+
+        summary_text = f"[LLM-Generated Conversation Summary]\n{result_text.strip()}"
+
+    except Exception as e:
+        logger.warning(f"LLM compaction failed, falling back to deterministic: {e}")
+        return compact_session(session, cfg)
+
+    summary_msg = ConversationMessage(
+        role=first.role,
+        content=[TextBlock(text=summary_text)],
+    )
+
+    session.messages = [first, summary_msg] + recent
+    return session

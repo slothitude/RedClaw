@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -52,11 +53,22 @@ async def execute_write_file(
     content: str,
     cwd: str | None = None,
 ) -> str:
-    """Write content to a file, creating directories if needed."""
+    """Write content to a file atomically, creating directories if needed."""
     resolved = _resolve(path, cwd or str(Path.cwd()))
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    with open(resolved, "w", encoding="utf-8") as f:
-        f.write(content)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(resolved.parent), prefix=".redclaw_", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, resolved)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return f"Wrote {len(content)} bytes to {resolved}"
 
 
@@ -81,7 +93,18 @@ async def execute_edit_file(
         return f"Error: old_string found {count} times in {resolved}. Provide more context to make it unique."
 
     new_content = content.replace(old_string, new_string, 1)
-    with open(resolved, "w", encoding="utf-8") as f:
-        f.write(new_content)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(resolved.parent), prefix=".redclaw_", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        os.replace(tmp_path, resolved)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
     return f"Replaced 1 occurrence in {resolved}"

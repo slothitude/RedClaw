@@ -18,11 +18,12 @@ class SkillTool:
 
 @dataclass
 class SkillManifest:
-    """Parsed skill.yaml manifest."""
+    """Parsed skill.yaml or SKILL.md manifest."""
     name: str
     description: str
     version: str = "1.0"
     tools: list[dict[str, Any]] = field(default_factory=list)
+    instructions: str = ""
 
 
 class SkillBase(abc.ABC):

@@ -1,9 +1,10 @@
-"""Skill discovery and loading from YAML manifests."""
+"""Skill discovery and loading from YAML manifests or SKILL.md files."""
 
 from __future__ import annotations
 
 import importlib.util
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,60 @@ def _parse_manifest(yaml_path: Path) -> SkillManifest | None:
         version=data.get("version", "1.0"),
         tools=data.get("tools", []),
     )
+
+
+def _parse_skill_md(md_path: Path) -> SkillManifest | None:
+    """Parse a SKILL.md file with YAML frontmatter + markdown body."""
+    try:
+        raw = md_path.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Failed to read {md_path}: {e}")
+        return None
+
+    # Extract YAML frontmatter between --- delimiters
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", raw, re.DOTALL)
+    if not match:
+        logger.error(f"SKILL.md missing frontmatter: {md_path}")
+        return None
+
+    frontmatter_str, body = match.group(1), match.group(2)
+
+    try:
+        import yaml
+    except ImportError:
+        logger.warning("PyYAML not installed. Cannot parse SKILL.md frontmatter.")
+        return None
+
+    try:
+        data = yaml.safe_load(frontmatter_str)
+    except Exception as e:
+        logger.error(f"Failed to parse SKILL.md frontmatter in {md_path}: {e}")
+        return None
+
+    if not data or "name" not in data:
+        logger.error(f"Invalid SKILL.md frontmatter (missing 'name'): {md_path}")
+        return None
+
+    return SkillManifest(
+        name=data["name"],
+        description=data.get("description", ""),
+        version=data.get("version", "1.0"),
+        tools=data.get("tools", []),
+        instructions=body.strip(),
+    )
+
+
+def _detect_manifest(skill_dir: Path) -> SkillManifest | None:
+    """Detect and parse manifest from skill_dir (SKILL.md or skill.yaml)."""
+    skill_md = skill_dir / "SKILL.md"
+    if skill_md.is_file():
+        return _parse_skill_md(skill_md)
+
+    yaml_path = skill_dir / "skill.yaml"
+    if yaml_path.is_file():
+        return _parse_manifest(yaml_path)
+
+    return None
 
 
 def _load_skill_module(skill_dir: Path, manifest: SkillManifest) -> SkillBase | None:
@@ -126,6 +181,8 @@ def discover_skills(skills_dirs: list[str] | None = None) -> list[SkillBase]:
         search_dirs.append(Path(d))
     # Also search in <cwd>/skills/ and <package_dir>/skills/
     search_dirs.append(Path.cwd() / "skills")
+    # User home skills directory
+    search_dirs.append(Path.home() / ".redclaw" / "skills")
 
     seen_names: set[str] = set()
 
@@ -135,11 +192,8 @@ def discover_skills(skills_dirs: list[str] | None = None) -> list[SkillBase]:
         for skill_dir in sorted(search_dir.iterdir()):
             if not skill_dir.is_dir():
                 continue
-            manifest_path = skill_dir / "skill.yaml"
-            if not manifest_path.is_file():
-                continue
 
-            manifest = _parse_manifest(manifest_path)
+            manifest = _detect_manifest(skill_dir)
             if manifest is None:
                 continue
 

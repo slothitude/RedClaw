@@ -19,6 +19,8 @@ class ToolSpec:
     input_schema: dict[str, Any]
     permission: PermissionLevel
     execute: Callable[..., Awaitable[str]]
+    check_fn: Callable[..., Awaitable[str | None]] | None = None
+    emoji: str = ""
 
 
 # ── Tool Definitions ─────────────────────────────────────────
@@ -195,6 +197,10 @@ class ToolExecutor:
             return f"Error: Unknown tool '{tool_name}'"
 
         try:
+            if spec.check_fn is not None:
+                check_msg = await spec.check_fn(**tool_input)
+                if check_msg is not None:
+                    return f"Error: {check_msg}"
             result = await spec.execute(**tool_input)
             return result
         except Exception as exc:

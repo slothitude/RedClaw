@@ -10,6 +10,8 @@ from pathlib import Path
 def build_system_prompt(
     working_dir: str | None = None,
     extra_instructions: str = "",
+    memory_snapshot: str = "",
+    skills_guidance: bool = False,
 ) -> str:
     """Build the system prompt with context."""
     cwd = working_dir or str(Path.cwd())
@@ -37,6 +39,20 @@ def build_system_prompt(
     # Extra instructions
     if extra_instructions:
         parts.append(f"\nAdditional instructions:\n{extra_instructions}")
+
+    # Memory snapshot
+    if memory_snapshot:
+        parts.append(f"\nMemory (frozen snapshot for this session):\n{memory_snapshot}")
+
+    # Skills guidance
+    if skills_guidance:
+        parts.append(
+            "\nSkill management:\n"
+            "- After completing complex multi-step tasks, consider creating a reusable skill.\n"
+            "- Use skills_list to see existing skills, skill_view to inspect them.\n"
+            "- Use skill_manage to create, update, patch, or delete skills.\n"
+            "- Skills are stored as SKILL.md files in ~/.redclaw/skills/<name>/.\n"
+        )
 
     # Tool usage guidelines
     parts.append(
