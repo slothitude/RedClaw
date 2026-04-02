@@ -24,11 +24,11 @@ class ToolSpec:
 # ── Tool Definitions ─────────────────────────────────────────
 
 
-def mvp_tool_specs(working_dir: str | None = None, search_url: str | None = None) -> list[ToolSpec]:
-    """Return the MVP tool specs plus optional web_search."""
+def mvp_tool_specs(working_dir: str | None = None, search_url: str | None = None, reader_url: str | None = None) -> list[ToolSpec]:
+    """Return the MVP tool specs plus optional web_search and web_reader."""
     from redclaw.tools.bash import execute_bash
     from redclaw.tools.file_ops import execute_read_file, execute_write_file, execute_edit_file
-    from redclaw.tools.search import execute_glob_search, execute_grep_search, execute_web_search
+    from redclaw.tools.search import execute_glob_search, execute_grep_search, execute_web_search, execute_web_reader
 
     cwd = working_dir or str(Path.cwd())
 
@@ -140,6 +140,23 @@ def mvp_tool_specs(working_dir: str | None = None, search_url: str | None = None
             execute=lambda **kw: execute_web_search(search_url=search_url, **kw),
         ))
 
+    # Add web_reader if reader_url is configured
+    if reader_url:
+        specs.append(ToolSpec(
+            name="web_reader",
+            description="Read and extract content from any webpage. Returns formatted text/markdown from the given URL.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to read"},
+                    "format": {"type": "string", "description": "Output format: text (markdown), clean (plain text), json (structured), stats", "default": "text"},
+                },
+                "required": ["url"],
+            },
+            permission=PermissionLevel.READ_ONLY,
+            execute=lambda **kw: execute_web_reader(reader_url=reader_url, **kw),
+        ))
+
     return specs
 
 
@@ -150,9 +167,10 @@ class ToolExecutor:
         self,
         working_dir: str | None = None,
         search_url: str | None = None,
+        reader_url: str | None = None,
     ) -> None:
         self.specs: dict[str, ToolSpec] = {
-            s.name: s for s in mvp_tool_specs(working_dir, search_url)
+            s.name: s for s in mvp_tool_specs(working_dir, search_url, reader_url)
         }
 
     def register_tool(self, spec: ToolSpec) -> None:
