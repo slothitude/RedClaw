@@ -437,14 +437,22 @@ class RedClawTelegramBot:
 
         async def _process() -> None:
             collected_text = ""
+            tool_names: list[str] = []
+            status_msg = None
 
             async def on_text_delta(t: str) -> None:
                 nonlocal collected_text
                 collected_text += t
 
             async def on_tool_begin(tid: str, name: str, inp: str) -> None:
+                nonlocal status_msg
+                tool_names.append(name)
                 try:
-                    await update.message.reply_text(f"`▶ {name}`", parse_mode=None)
+                    tool_list = " | ".join(f"▶ {n}" for n in tool_names)
+                    if status_msg is None:
+                        status_msg = await update.message.reply_text(tool_list)
+                    else:
+                        await status_msg.edit_text(tool_list)
                 except Exception:
                     pass
 
