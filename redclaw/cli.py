@@ -309,6 +309,7 @@ def main() -> int | None:
             perm_mode=args.permission_mode,
             search_url=args.search_url,
             reader_url=args.reader_url,
+            mcp_servers=args.mcp_servers,
         )
         asyncio.run(bot.run())
     elif args.mode == "webchat":
