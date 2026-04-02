@@ -1,4 +1,7 @@
-# RedClaw
+<div align="center">
+  <img src="assets/logo.png" alt="RedClaw" width="200">
+  <h1>RedClaw</h1>
+</div>
 
 A minimal AI coding agent in two forms:
 
