@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="RedClaw — a minimal AI coding agent",
     )
     p.add_argument("prompt", nargs="?", help="Initial prompt (omit for interactive REPL)")
-    p.add_argument("--provider", default="openai", help="LLM provider (openai, anthropic, ollama, groq, deepseek, openrouter, zai, or custom)")
+    p.add_argument("--provider", default="zai", help="LLM provider (zai, openai, anthropic, ollama, groq, deepseek, openrouter, or custom)")
     p.add_argument("--model", default="", help="Model name (provider default if omitted)")
     p.add_argument("--base-url", default=None, help="Custom API base URL")
     p.add_argument("--permission-mode", choices=["read_only", "workspace_write", "danger_full_access", "ask"], default="ask", help="Permission mode")
