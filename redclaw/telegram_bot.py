@@ -61,7 +61,8 @@ class TelegramSession:
     """Per-user session state."""
 
     def __init__(self, user_id: int, working_dir: str, provider_name: str,
-                 model: str, base_url: str | None, perm_mode: str):
+                 model: str, base_url: str | None, perm_mode: str,
+                 search_url: str | None = None, reader_url: str | None = None):
         self.user_id = user_id
         self.working_dir = working_dir
         self.provider_name = provider_name
@@ -76,7 +77,7 @@ class TelegramSession:
         self.session.provider = provider_name
         self.session.working_dir = cwd
 
-        self.tools = ToolExecutor(working_dir=cwd)
+        self.tools = ToolExecutor(working_dir=cwd, search_url=search_url, reader_url=reader_url)
         self.policy = PermissionPolicy(mode=PermissionMode(perm_mode))
         self.tracker = UsageTracker()
 
@@ -104,10 +105,12 @@ class RedClawTelegramBot:
         token: str,
         allowed_user_id: int | None = None,
         working_dir: str | None = None,
-        provider_name: str = "openai",
-        model: str = "gpt-4o",
+        provider_name: str = "zai",
+        model: str = "glm-4.7",
         base_url: str | None = None,
         perm_mode: str = "ask",
+        search_url: str | None = None,
+        reader_url: str | None = None,
     ):
         self.token = token
         self.allowed_user_id = allowed_user_id
@@ -116,6 +119,8 @@ class RedClawTelegramBot:
         self.model = model
         self.base_url = base_url
         self.perm_mode = perm_mode
+        self.search_url = search_url
+        self.reader_url = reader_url
         self.sessions: dict[int, TelegramSession] = {}
 
     def _get_session(self, user_id: int) -> TelegramSession:
@@ -127,6 +132,8 @@ class RedClawTelegramBot:
                 model=self.model,
                 base_url=self.base_url,
                 perm_mode=self.perm_mode,
+                search_url=self.search_url,
+                reader_url=self.reader_url,
             )
         return self.sessions[user_id]
 

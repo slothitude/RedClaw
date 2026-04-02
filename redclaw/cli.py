@@ -73,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Web search
     p.add_argument("--search-url", default=None, help="SearXNG instance URL (e.g. http://100.84.161.63:8080)")
+    p.add_argument("--reader-url", default=None, help="Web Reader API URL (e.g. http://100.84.161.63:8003)")
 
     return p
 
@@ -100,6 +101,7 @@ async def _run_repl(
     initial_prompt: str | None,
     skills_dirs: list[str] | None = None,
     search_url: str | None = None,
+    reader_url: str | None = None,
 ) -> None:
     """Run the interactive REPL."""
     cwd = working_dir or str(Path.cwd())
@@ -119,7 +121,7 @@ async def _run_repl(
     session.provider = provider_name
     session.working_dir = cwd
 
-    tools = ToolExecutor(working_dir=cwd, search_url=search_url)
+    tools = ToolExecutor(working_dir=cwd, search_url=search_url, reader_url=reader_url)
     policy = PermissionPolicy(mode=PermissionMode(perm_mode))
     tracker = UsageTracker()
 
@@ -305,6 +307,8 @@ def main() -> int | None:
             model=model,
             base_url=args.base_url,
             perm_mode=args.permission_mode,
+            search_url=args.search_url,
+            reader_url=args.reader_url,
         )
         asyncio.run(bot.run())
     elif args.mode == "webchat":
@@ -328,6 +332,7 @@ def main() -> int | None:
             initial_prompt=args.prompt,
             skills_dirs=args.skills_dir,
             search_url=args.search_url,
+            reader_url=args.reader_url,
         ))
 
     return 0

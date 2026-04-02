@@ -1,4 +1,4 @@
-"""Search tools — glob, grep, and web search."""
+"""Search tools — glob, grep, web search, and web reader."""
 
 from __future__ import annotations
 
@@ -113,3 +113,35 @@ async def execute_web_search(
         return "\n".join(lines)
     except Exception as e:
         return f"Error searching: {e}"
+
+
+async def execute_web_reader(
+    url: str,
+    format: str = "text",
+    reader_url: str | None = None,
+    **kwargs: Any,
+) -> str:
+    """Fetch and read a webpage, converting it to readable text/markdown.
+
+    Uses the Web Reader API to extract content from any URL.
+    Formats: text (markdown), clean (plain text), json (structured), stats.
+    """
+    base = reader_url or os.environ.get("REDCLAW_READER_URL", "http://localhost:8003")
+    endpoint = f"{base}/read"
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                endpoint,
+                json={"url": url, "format": format},
+                headers={"Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+
+            if format == "json":
+                data = resp.json()
+                return json.dumps(data, indent=2, ensure_ascii=False)[:8000]
+
+            return resp.text[:8000]
+    except Exception as e:
+        return f"Error reading {url}: {e}"
