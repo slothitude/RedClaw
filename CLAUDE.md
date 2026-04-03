@@ -90,7 +90,7 @@ MCP Client (redclaw/mcp_client.py)
 
 ### CLI flags
 
-Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`
+Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`, `--assistant`, `--knowledge`, `--knowledge-dir`, `--knowledge-api-key`
 
 ## Subsystems
 
@@ -157,6 +157,8 @@ Named collections of tool names with recursive include resolution:
 | `subagent` | subagent |
 | `full` | includes core, shell, web |
 | `readonly` | read_file, glob_search, grep_search |
+| `assistant` | task, note, reminder |
+| `knowledge` | knowledge |
 
 Custom toolsets can be registered at runtime.
 
@@ -204,6 +206,26 @@ Applied to memory stores and skill content.
 - `stt_server.py` — Speech-to-text with Whisper base model, FastMCP framework
 - `web_reader_server.py` — Web reader with Playwright headless browser + html2text, FastMCP framework
 - `start_all.py` — Script to start all local MCP servers
+
+### Assistant Subsystem
+
+`redclaw/assistant/` — proactive personal assistant features for Telegram mode:
+- **Config** — `AssistantConfig` dataclass with JSON persistence (`~/.redclaw/assistant/config.json`), supports `persona_name`, timezone, briefing preferences
+- **Tasks** — `TaskStore` with add/list/update/delete/search (JSONL persistence in `~/.redclaw/assistant/tasks.jsonl`)
+- **Notes** — `NoteStore` with CRUD + search (JSONL persistence in `~/.redclaw/assistant/notes.jsonl`)
+- **Reminders** — `ReminderStore` with scheduling, pending queries, due-check (JSONL persistence)
+- **Agent tools** — `task`, `note`, `reminder` registered via `redclaw/tools/assistant_tools.py`
+- **Persona name** — configured via `persona_name` in config; prepended to assistant context so the LLM identifies by that name
+- Enabled with `--assistant` CLI flag (Telegram mode only)
+
+### Knowledge Graph
+
+`redclaw/memory_graph/` — Cognee-backed persistent knowledge graph memory:
+- **Tools** — `add` (store facts), `cognify` (process into graph), `search` (query the graph), `memify` (summarize to memory), `prune` (remove old entries)
+- **Agent tool** — `knowledge` registered when `--knowledge` flag is set
+- Storage: `~/.redclaw/knowledge/` (configurable via `--knowledge-dir`)
+- Requires `cognee` optional dependency and a separate LLM API key (`--knowledge-api-key`)
+- Enabled with `--knowledge` CLI flag
 
 ### Crypt (Wisdom Inheritance)
 
