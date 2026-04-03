@@ -1,17 +1,20 @@
 <div align="center">
   <img src="assets/logo.png" alt="RedClaw" width="200">
   <h1>RedClaw</h1>
+  <p><strong>A minimal, provider-agnostic AI coding agent</strong></p>
 </div>
 
-A minimal AI coding agent with multiple interfaces:
+## Interfaces
 
-- **CLI REPL** — headless streaming agent with tools, sessions, and compaction
-- **Godot 4.6 GUI** — IDE-like app that drives the Python agent via JSON-RPC
-- **Telegram Bot** — chat with your agent anywhere, with file upload/download
-- **WebChat** — browser-based chat with embedded HTML UI
-- **Dashboard** — Flask config GUI and process launcher
+| Mode | Description |
+|---|---|
+| **REPL** | Interactive CLI coding agent with streaming, sessions, and compaction |
+| **Dashboard** | Web config GUI + process launcher (port 9090) |
+| **WebChat** | Browser-based chat with embedded UI (port 8080) |
+| **Telegram** | Chat with your agent anywhere, file upload/download, assistant mode |
+| **Godot 4.6 GUI** | IDE-like app driving the Python agent via JSON-RPC |
 
-All interfaces share the same provider-agnostic LLM client, conversation loop, tools, session persistence, and compaction.
+All interfaces share the same LLM client, conversation loop, tools, session persistence, and compaction.
 
 ## Features
 
@@ -29,51 +32,81 @@ All interfaces share the same provider-agnostic LLM client, conversation loop, t
 - **Content security** — injection, exfiltration, and invisible unicode scanning
 - **Assistant mode** — tasks, notes, reminders, scheduler, briefings with configurable persona name
 - **Knowledge graph** — Cognee-backed persistent knowledge (add, cognify, search, memify, prune)
-
-## Dependencies
-
-- Python 3.11+
-- `httpx>=0.27`, `rich>=13`, `python-telegram-bot>=21.0`, `pyyaml>=6.0`, `aiohttp>=3.9`
-- Optional: `edge-tts`, `openai-whisper`, `fastmcp`, `playwright`, `flask` (for local servers/dashboard)
-- Any LLM provider
-- [Godot 4.6](https://godotengine.org/) (for the GUI app)
+- **Docker support** — multi-stage build with docker-compose
+- **Standalone exe** — single-file Windows executable, no Python needed
 
 ## Install
 
+### Windows (exe — no Python required)
+
+1. Download `redclaw.exe` from the [latest release](https://github.com/slothitude/RedClaw/releases)
+2. Double-click `install.bat` — or copy `redclaw.exe` anywhere on your PATH
+3. Run:
+   ```
+   redclaw
+   ```
+   You'll see an interactive mode chooser:
+   ```
+   RedClaw v0.2.0 — Choose a mode:
+
+     1) REPL         Interactive CLI coding agent
+     2) Dashboard    Web config GUI + process launcher (port 9090)
+     3) WebChat      Browser-based chat (port 8080)
+     4) Telegram     Telegram bot
+
+     0) Exit
+   ```
+
+To uninstall, run `uninstall.bat` or delete the exe.
+
+### Linux / macOS
+
 ```bash
-cd redclaw
+chmod +x install.sh
+./install.sh
+```
+
+This creates a venv at `~/.redclaw/venv`, installs RedClaw, and symlinks the binary to `~/.local/bin`.
+
+### From source
+
+```bash
+git clone https://github.com/slothitude/RedClaw.git
+cd RedClaw
 pip install -e .              # Install
 pip install -e ".[dev]"       # Install with dev deps (pytest, pytest-asyncio)
 ```
 
-## Usage
-
-### CLI
+### Docker
 
 ```bash
+docker compose up
+```
+
+Exposes WebChat on port 8080 and Dashboard on port 9090. See `docker-compose.yml` for environment variables.
+
+## Quick Start
+
+```bash
+# Launch with interactive mode chooser
+redclaw
+
+# Skip the menu — go straight to a mode
+redclaw --mode repl
+redclaw --mode dashboard
+redclaw --mode webchat
+redclaw --mode telegram
+
+# Use a specific provider and model
+redclaw --provider openai --model gpt-4o
+redclaw --provider anthropic --model claude-sonnet-4-20250514
+redclaw --provider ollama --model llama3 --base-url http://localhost:11434
+
 # One-shot prompt
-python -m redclaw --provider openai --model gpt-4o "list files in this project"
-
-# Interactive REPL
-python -m redclaw --provider openai --model gpt-4o
-
-# With Ollama
-python -m redclaw --provider ollama --model llama3 --base-url http://localhost:11434
-
-# With custom API
-python -m redclaw --provider openai --model glm-4.7 --base-url https://api.example.com/v4
+redclaw --provider openai "list files in this project"
 
 # Read-only mode (no file writes or bash)
-python -m redclaw --provider openai --permission-mode read_only
-
-# Telegram bot
-python -m redclaw --mode telegram
-
-# WebChat server
-python -m redclaw --mode webchat
-
-# Dashboard
-python -m redclaw --mode dashboard
+redclaw --permission-mode read_only
 ```
 
 ### CLI Flags
@@ -87,7 +120,7 @@ python -m redclaw --mode dashboard
 | `--session` | Resume a session ID |
 | `--working-dir` | Working directory (default: cwd) |
 | `--mode` | `repl`, `rpc`, `telegram`, `webchat`, or `dashboard` |
-| `--mcp-servers` | MCP server URLs (comma-separated) |
+| `--mcp-servers` | MCP server URLs (space-separated) |
 | `--tts-url` | TTS server URL |
 | `--stt-url` | STT server URL |
 | `--search-url` | SearXNG instance URL |
@@ -148,7 +181,7 @@ redclaw/
   crypt/          Wisdom inheritance: bloodlines, entombment, dharma, metrics
   channels/       Abstract messaging layer (base + Telegram)
   mcp_client.py   MCP SSE client for external tool servers
-  cli.py          REPL with rich rendering
+  cli.py          REPL with rich rendering and interactive mode chooser
   rpc.py          JSON-RPC over stdio (Godot bridge)
   telegram_bot.py Telegram bot interface
   webchat.py      HTTP/WebSocket chat server
@@ -159,6 +192,14 @@ godot/            Godot 4.6 GUI project
   scripts/        Agent bridge, session manager, settings
   ui/             Chat panel, sidebar, tool panel, status bar
 ```
+
+## Dependencies
+
+- Python 3.11+
+- `httpx>=0.27`, `rich>=13`, `python-telegram-bot>=21.0`, `pyyaml>=6.0`, `aiohttp>=3.9`
+- Optional: `edge-tts`, `openai-whisper`, `fastmcp`, `playwright`, `flask` (for local servers/dashboard)
+- Any LLM provider
+- [Godot 4.6](https://godotengine.org/) (for the GUI app)
 
 ## License
 
