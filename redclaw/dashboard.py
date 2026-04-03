@@ -46,8 +46,9 @@ def clear_logs() -> None:
 # Local MCP server manager
 # ---------------------------------------------------------------------------
 
-_SERVERS_DIR = Path(__file__).resolve().parent.parent / "servers"
-_VENV311_PYTHON = Path(__file__).resolve().parent.parent / ".venv311" / "Scripts" / "python.exe"
+_BASE_DIR = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
+_SERVERS_DIR = _BASE_DIR / "servers"
+_VENV311_PYTHON = _BASE_DIR / ".venv311" / "Scripts" / "python.exe"
 
 SERVER_DEFS = [
     {"name": "TTS", "script": "tts_server.py", "port": 8006,
@@ -211,7 +212,10 @@ class ProcessManager:
         if self.running:
             return "Process already running"
 
-        cmd = [sys.executable, "-m", "redclaw"]
+        if getattr(sys, 'frozen', False):
+            cmd = [sys.executable]
+        else:
+            cmd = [sys.executable, "-m", "redclaw"]
         cmd = self._build_cmd(cmd, config)
 
         env = os.environ.copy()
