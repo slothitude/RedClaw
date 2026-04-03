@@ -402,6 +402,7 @@ def _choose_mode() -> str | None:
     console.print("  [bold]2)[/] [cyan]Dashboard[/]    Web config GUI + process launcher (port 9090)")
     console.print("  [bold]3)[/] [cyan]WebChat[/]      Browser-based chat (port 8080)")
     console.print("  [bold]4)[/] [cyan]Telegram[/]     Telegram bot")
+    console.print("  [bold]5)[/] [cyan]Guide[/]        Open the user guide in your browser")
     console.print()
     console.print("  [bold]0)[/] Exit")
     console.print()
@@ -412,12 +413,33 @@ def _choose_mode() -> str | None:
         except (EOFError, KeyboardInterrupt):
             return None
 
-        modes = {"1": "repl", "2": "dashboard", "3": "webchat", "4": "telegram"}
+        modes = {"1": "repl", "2": "dashboard", "3": "webchat", "4": "telegram", "5": "guide"}
         if choice == "0" or choice.lower() in ("q", "quit", "exit"):
             return None
+        if choice == "5":
+            _open_guide()
+            continue
         if choice in modes:
             return modes[choice]
-        console.print("[yellow]Invalid choice. Enter 0-4.[/]")
+        console.print("[yellow]Invalid choice. Enter 0-5.[/]")
+
+
+def _open_guide() -> None:
+    """Open the HTML user guide in the default browser."""
+    import webbrowser
+    from pathlib import Path
+
+    # Check bundled guide (next to exe or in package)
+    exe_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent.parent
+    bundled = exe_dir / "docs" / "guide.html"
+    if bundled.exists():
+        webbrowser.open(str(bundled))
+        console.print("[dim]Opened user guide.[/]\n")
+        return
+
+    # Fallback: open GitHub README
+    webbrowser.open("https://github.com/slothitude/RedClaw#readme")
+    console.print("[dim]Opened online guide.[/]\n")
 
 
 def main() -> int | None:
@@ -431,6 +453,10 @@ def main() -> int | None:
     )
 
     model = args.model or _default_model(args.provider)
+
+    # Check for updates (exe only, silent if up-to-date)
+    from redclaw.updater import check_for_update
+    check_for_update()
 
     # Show interactive mode chooser when --mode not explicitly passed
     if "--mode" not in sys.argv:
