@@ -49,8 +49,7 @@ func list_sessions() -> Array:
 
 ## Create a new session.
 func new_session() -> String:
-	import_time
-	var session_id: String = str(import_time.get_ticks_msec())
+	var session_id: String = str(Time.get_ticks_msec())
 	_current_session_id = session_id
 	session_loaded.emit(session_id)
 	return session_id

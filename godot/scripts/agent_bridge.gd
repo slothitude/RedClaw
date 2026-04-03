@@ -13,8 +13,9 @@ signal error_occurred(message: String)
 signal connection_status_changed(connected: bool)
 signal ready_received(session_id: String, model: String, provider: String)
 
-var _process_id: int = -1
-var _pipe_fd: int = -1
+var _pid: int = -1
+var _stdin_pipe: FileAccess = null
+var _stdout_pipe: FileAccess = null
 var _thread: Thread = null
 var _running: bool = false
 var _request_id: int = 0
@@ -24,8 +25,9 @@ var _connected: bool = false
 var _line_buffer: String = ""
 
 
-func _ready() -> void:
-	pass
+var is_connected: bool:
+	get:
+		return _connected
 
 
 func _exit_tree() -> void:
@@ -33,7 +35,7 @@ func _exit_tree() -> void:
 
 
 ## Start the Python agent subprocess.
-func start(provider: String, model: String, base_url: String = "", perm_mode: String = "ask", session_id: String = "", working_dir: String = "") -> bool:
+func start(provider: String, model: String, base_url: String = "", perm_mode: String = "ask", session_id: String = "", working_dir: String = "", assistant_mode: bool = false) -> bool:
 	if _running:
 		push_warning("Agent bridge already running")
 		return false
@@ -48,13 +50,21 @@ func start(provider: String, model: String, base_url: String = "", perm_mode: St
 		args.append_array(["--session", session_id])
 	if working_dir != "":
 		args.append_array(["--working-dir", working_dir])
+	if assistant_mode:
+		args.append_array(["--assistant"])
 
-	_process_id = OS.create_process("python", args, true)
-	if _process_id == -1:
+	var result: Dictionary = OS.execute_with_pipe("python", args, false)
+	if result.is_empty() or not result.has("pid"):
 		error_occurred.emit("Failed to start Python process")
 		return false
 
+	_pid = result["pid"]
+	_stdin_pipe = result["stdin"]
+	_stdout_pipe = result["stdout"]
+
 	_running = true
+	_connected = true
+	connection_status_changed.emit(true)
 
 	# Start reader thread
 	_thread = Thread.new()
@@ -66,9 +76,15 @@ func start(provider: String, model: String, base_url: String = "", perm_mode: St
 ## Stop the Python subprocess.
 func stop() -> void:
 	_running = false
-	if _process_id != -1:
-		OS.kill(_process_id)
-		_process_id = -1
+	if _pid != -1:
+		OS.kill(_pid)
+		_pid = -1
+	if _stdin_pipe:
+		_stdin_pipe.close()
+		_stdin_pipe = null
+	if _stdout_pipe:
+		_stdout_pipe.close()
+		_stdout_pipe = null
 	if _thread and _thread.is_started():
 		_thread.wait_to_finish()
 		_thread = null
@@ -114,6 +130,7 @@ func set_provider(provider: String, base_url: String = "") -> void:
 	_send_request("set_provider", params)
 
 
+## Send a JSON-RPC request.
 func _send_request(method: String, params: Dictionary = {}) -> void:
 	_request_id += 1
 	var request: Dictionary = {
@@ -123,7 +140,13 @@ func _send_request(method: String, params: Dictionary = {}) -> void:
 		"params": params
 	}
 	var json_str: String = JSON.stringify(request)
-	OS.write_stdout(_process_id, (json_str + "\n").to_utf8_buffer())
+	if _stdin_pipe:
+		_stdin_pipe.store_string(json_str + "\n")
+		_stdin_pipe.flush()
+
+
+	else:
+		push_warning("Cannot send request: no stdin pipe")
 
 
 ## Read stdout in a background thread.
@@ -132,11 +155,19 @@ func _read_stdout() -> void:
 		# Small sleep to avoid busy-waiting
 		OS.delay_msec(50)
 
-		var output: PackedByteArray = OS.read_stdout(_process_id, 4096)
-		if output.size() == 0:
+		if _stdout_pipe == null:
 			continue
 
-		var chunk: String = output.get_string_from_utf8()
+		# Read available data
+		var available: int = _stdout_pipe.get_length() if _stdout_pipe.get_buffer(1).size() > 0 else 0
+		if available <= 0:
+			continue
+
+		var data: PackedByteArray = _stdout_pipe.get_buffer(min(available, 65536))
+		if data.size() == 0:
+			continue
+
+		var chunk: String = data.get_string_from_utf8()
 		_line_buffer += chunk
 
 		# Process complete lines
@@ -145,7 +176,14 @@ func _read_stdout() -> void:
 			var line: String = _line_buffer.substr(0, idx).strip_edges()
 			_line_buffer = _line_buffer.substr(idx + 1)
 			if line != "":
-				_handle_line.call_deferred(line)
+				_handle_line(line)
+
+	# Process remaining buffer after exit
+	if _line_buffer.length() > 0 and not _running:
+		for remaining_line in _line_buffer.split("\n"):
+			if remaining_line.strip_edges() != "":
+				_handle_line(remaining_line)
+		_line_buffer = ""
 
 
 ## Handle a single JSONL line from the agent.
@@ -158,7 +196,7 @@ func _handle_line(line: String) -> void:
 	if obj == null:
 		return
 
-	# Handle JSON-RPC responses (have "result" or "error")
+	# Handle JSON-RPC responses ( have "result" or "error")
 	if obj.has("id") and (obj.has("result") or obj.has("error")):
 		# JSON-RPC response — we don't need to do much with these for now
 		return
@@ -181,7 +219,7 @@ func _handle_line(line: String) -> void:
 			tool_call_received.emit(
 				obj.get("id", ""),
 				obj.get("name", ""),
-				obj.get("input", "")
+				JSON.stringify(obj.get("input", {}))
 			)
 		"tool_result":
 			tool_result_received.emit(
@@ -196,10 +234,6 @@ func _handle_line(line: String) -> void:
 			)
 		"done":
 			turn_finished.emit(obj.get("error", ""))
+			_running = false
 		"error":
 			error_occurred.emit(obj.get("message", "Unknown error"))
-
-
-var is_connected: bool:
-	get:
-		return _connected

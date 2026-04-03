@@ -75,7 +75,7 @@ func _build_layout() -> void:
 	_sidebar = SIDEBAR_SCENE.instantiate()
 	hsplit.add_child(_sidebar)
 	_sidebar.setup(_session_manager)
-	_sidebar.settings_changed.connect(_on_settings_changed)
+	_sidebar.settings_changed.connect(_on_sidebar_settings_changed)
 	_sidebar.session_selected.connect(_on_session_selected)
 
 	# Chat panel
@@ -116,7 +116,12 @@ func _try_auto_start() -> void:
 	var provider: String = settings.get("provider", "")
 	var model: String = settings.get("model", "")
 	if provider != "" and model != "":
+		var assistant_mode: bool = settings.get("assistant_mode", false)
 		start_agent(provider, model, settings.get("base_url", ""), settings.get("perm_mode", "ask"))
+		# Update title
+		if assistant_mode:
+			var persona: String = settings.get("persona_name", "")
+			DisplayServer.window_set_title("RedClaw — " + persona if persona != "" else "RedClaw — Assistant")
 
 
 func start_agent(provider: String, model: String, base_url: String = "", perm_mode: String = "ask") -> void:
@@ -128,8 +133,9 @@ func start_agent(provider: String, model: String, base_url: String = "", perm_mo
 
 	var work_dir: String = _settings_mgr.get_setting("working_dir", "")
 	var session_id: String = _session_manager.get_current_session_id()
+	var assistant_mode: bool = _settings_mgr.get_setting("assistant_mode", false)
 
-	_agent_bridge.start(provider, model, base_url, perm_mode, session_id, work_dir)
+	_agent_bridge.start(provider, model, base_url, perm_mode, session_id, work_dir, assistant_mode)
 
 
 func _on_bridge_ready(session_id: String, model: String, provider: String) -> void:
@@ -173,17 +179,29 @@ func _on_connection_changed(connected: bool) -> void:
 		status_label.text = "Connected" if connected else "Disconnected"
 
 
-func _on_settings_changed(provider: String, model: String, api_key: String, perm_mode: String) -> void:
-	_settings_mgr.set_setting("provider", provider)
-	_settings_mgr.set_setting("model", model)
-	_settings_mgr.set_setting("perm_mode", perm_mode)
-	if api_key != "":
-		_settings_mgr.set_api_key(provider, api_key)
+func _on_sidebar_settings_changed(settings: Dictionary) -> void:
+	# Save all settings from sidebar (including assistant mode)
+	for key in settings:
+		if key != "api_key":
+			_settings_mgr.set_setting(key, settings[key])
+	if settings.get("api_key", "") != "":
+		_settings_mgr.set_api_key(settings.get("provider", "openai"), settings["api_key"])
 	_settings_mgr.save_settings()
 
 	var perm_label: Label = _status_bar.get_node("PermLabel") as Label
 	if perm_label:
-		perm_label.text = "Mode: " + perm_mode
+		perm_label.text = "Mode: " + settings.get("perm_mode", "ask")
+
+	# Update window title based on mode
+	var assistant_mode: bool = settings.get("assistant_mode", false)
+	if assistant_mode:
+		var persona: String = settings.get("persona_name", "")
+		if persona != "":
+			DisplayServer.window_set_title("RedClaw — " + persona)
+		else:
+			DisplayServer.window_set_title("RedClaw — Assistant")
+	else:
+		DisplayServer.window_set_title("RedClaw — AI Coding Agent")
 
 
 func _on_session_selected(session_id: String) -> void:
@@ -201,12 +219,7 @@ func _on_session_selected(session_id: String) -> void:
 
 func _apply_settings(settings: Dictionary) -> void:
 	_sidebar.set_settings(settings)
-	_on_settings_changed(
-		settings.get("provider", "openai"),
-		settings.get("model", ""),
-		"",
-		settings.get("perm_mode", "ask"),
-	)
+	_on_sidebar_settings_changed(settings)
 
 
 func _update_status(status: String, model: String) -> void:

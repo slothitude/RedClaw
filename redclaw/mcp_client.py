@@ -1,7 +1,7 @@
 """MCP SSE client — connects to MCP tool servers over Server-Sent Events.
 
 MCP SSE protocol flow:
-1. GET /sse → persistent SSE stream, first event gives session endpoint
+1. GET /sse -> persistent SSE stream, first event gives session endpoint
 2. POST {session_url} with initialize JSON-RPC -> 202 Accepted
 3. Read initialize response from SSE stream
 4. POST notifications/initialized -> 202
@@ -28,17 +28,20 @@ class MCPTool:
     name: str
     description: str
     input_schema: dict[str, Any]
+
+
 @dataclass
 class MCPServerConfig:
     """Configuration for an MCP server."""
     name: str
-    url: str  # e.g. http://100.84.161.63:8006/sse
+    url: str
+
+
 class _SSEConnection:
     """Manages a persistent SSE connection to an MCP server.
 
-    Uses httpx's aaiter_raw() for chunk-level streaming so so line buffer so    we can read lines
-    during connect() AND continue reading in the background reader
-    without exhausting the iterator.
+    Uses a single continuous reader task with httpx aiter_lines()
+    for both endpoint discovery and JSON-RPC response reading.
     """
 
     def __init__(self, server_url: str, http_client: httpx.AsyncClient) -> None:
@@ -47,13 +50,13 @@ class _SSEConnection:
         self.session_url: str | None = None
         self._response_queue: asyncio.Queue[dict] = asyncio.Queue()
         self._reader_task: asyncio.Task | None = None
-        self._cm: Any = None  # streaming context manager
+        self._cm: Any = None
         self._stream: httpx.Response | None = None
-        self._line_buf = b""
         self._stopped = False
+        self._endpoint_event = asyncio.Event()
 
     async def connect(self) -> bool:
-        """Open SSE stream, extract session URL, start reading responses."""
+        """Open SSE stream and wait for session endpoint."""
         try:
             logger.debug(f"Opening SSE connection to {self.server_url}")
             self._cm = self._http.stream("GET", self.server_url)
@@ -61,78 +64,56 @@ class _SSEConnection:
             self._stream.raise_for_status()
             logger.debug(f"SSE connection established, status {self._stream.status_code}")
 
-            # Read raw bytes, buffer, and extract first data line
-            current_event = None
-            chunk_count = 0
-            async for raw in self._stream.aiter_raw(4096):
-                chunk_count += 1
-                if chunk_count <= 3:
-                    logger.debug(f"Read chunk {chunk_count}: {len(raw)} bytes")
-                if not raw:
-                    logger.debug("End of stream")
-                    break
-                self._line_buf += raw
-                while b"\n" in self._line_buf:
-                    line_bytes, self._line_buf = self._line_buf.split(b"\n", 1)
-                    line = line_bytes.decode("utf-8", errors="replace").strip()
-                    logger.debug(f"Parsed line: {line[:100]}")
-                    if line.startswith("event: "):
-                        current_event = line[7:].strip()
-                        logger.debug(f"Event type: {current_event}")
-                    elif line.startswith("data: "):
-                        data_str = line[6:].strip()
-                        logger.debug(f"Data: {data_str[:100]}")
-                        if current_event == "endpoint" and data_str.startswith("/"):
-                            base = self.server_url.rstrip("/").removesuffix("/sse")
-                            self.session_url = f"{base}{data_str}"
-                            logger.debug(f"Set session URL: {self.session_url}")
-                            break
-                        current_event = None
-                if self.session_url:
-                    break
+            # Start single continuous reader
+            self._reader_task = asyncio.create_task(self._reader_loop())
+
+            # Wait for the endpoint event from the reader
+            try:
+                await asyncio.wait_for(self._endpoint_event.wait(), timeout=15.0)
+            except asyncio.TimeoutError:
+                logger.error("Timeout waiting for SSE endpoint")
+                await self.close()
+                return False
+
             if not self.session_url:
                 logger.error("No session endpoint received from SSE")
                 await self.close()
                 return False
 
-            # Start background reader — it continues reading from the same stream
-            logger.debug("Starting background SSE reader")
-            self._reader_task = asyncio.create_task(self._read_sse_loop())
             return True
         except Exception as e:
             logger.error(f"SSE connect failed for {self.server_url}: {e}")
             return False
 
-    async def _read_lines(self):
-        """Async generator yielding lines from the stream + buffered data."""
-        while not self._stopped:
-            # First drain any buffered data
-            while b"\n" in self._line_buf:
-                line_bytes, self._line_buf = self._line_buf.split(b"\n", 1)
-                yield line_bytes.decode("utf-8", errors="replace").strip()
-            # Then read more from stream using aiter_raw chunked streaming
-            try:
-                async for raw in self._stream.aiter_raw(4096):
-                    if not raw:
-                        break
-                    self._line_buf += raw
-            except Exception:
-                break
-    async def _read_sse_loop(self) -> None:
-        """Background task: read SSE events and queue JSON-RPC responses."""
+    async def _reader_loop(self) -> None:
+        """Single continuous reader: discovers endpoint + queues JSON-RPC responses."""
         try:
             current_event = None
-            line_count = 0
-            async for line in self._read_lines():
-                line_count += 1
-                if line_count <= 5:
-                    logger.debug(f"SSE reader line {line_count}: {line[:100]}")
+            async for line in self._stream.aiter_lines():
+                if self._stopped:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+
                 if line.startswith("event: "):
                     current_event = line[7:].strip()
                 elif line.startswith("data: "):
                     data_str = line[6:].strip()
                     if not data_str:
+                        current_event = None
                         continue
+
+                    # Endpoint discovery
+                    if current_event == "endpoint" and data_str.startswith("/"):
+                        base = self.server_url.rstrip("/").removesuffix("/sse")
+                        self.session_url = f"{base}{data_str}"
+                        logger.debug(f"Session URL: {self.session_url}")
+                        self._endpoint_event.set()
+                        current_event = None
+                        continue
+
+                    # JSON-RPC response
                     try:
                         msg = json.loads(data_str)
                         if "id" in msg:
@@ -142,7 +123,10 @@ class _SSEConnection:
                         pass
                     current_event = None
         except Exception as e:
-            logger.debug(f"SSE stream ended for {self.server_url}: {e}")
+            logger.debug(f"SSE reader ended for {self.server_url}: {e}")
+        finally:
+            # Unblock connect() if reader dies before finding endpoint
+            self._endpoint_event.set()
 
     async def send_and_wait(self, payload: dict, timeout: float = 30.0) -> dict | None:
         """POST a JSON-RPC message and wait for the response via SSE."""
@@ -201,6 +185,7 @@ class _SSEConnection:
 
 class MCPClient:
     """Client for MCP SSE servers."""
+
     def __init__(self, servers: list[MCPServerConfig] | None = None) -> None:
         self.servers = servers or []
         self._tools: dict[str, MCPTool] = {}
