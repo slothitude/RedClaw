@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 DATA_DIR="${DATA_DIR:-$HOME/.redclaw}"
 
@@ -64,7 +64,7 @@ if ! grep -q "$INSTALL_DIR" "$shell_rc" 2>/dev/null; then
 fi
 
 # --- data dir ---
-mkdir -p "$DATA_DIR"/{memory,assistant,crypt/bloodlines,crypt/entombed,skills}
+mkdir -p "$DATA_DIR"/{memory,assistant,crypt/bloodlines,crypt/entombed,crypt/dna,skills,agi}
 
 # --- done ---
 echo ""
@@ -72,6 +72,8 @@ echo " Done! RedClaw installed."
 echo ""
 echo " Quick start:"
 echo "   redclaw                          # CLI REPL"
+echo "   redclaw --agi                    # AGI autonomous mode"
+echo "   redclaw --update                 # Force update from GitHub"
 echo "   redclaw --mode dashboard         # Web dashboard"
 echo "   redclaw --mode webchat           # Browser chat"
 echo "   redclaw --mode telegram          # Telegram bot"

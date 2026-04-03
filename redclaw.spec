@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for RedClaw v1 — single-file Windows exe."""
+"""PyInstaller spec for RedClaw v0.3.0 — single-file Windows exe with AGI."""
 
 import importlib.metadata
 from PyInstaller.utils.hooks import copy_metadata
@@ -36,6 +36,7 @@ a = Analysis(
         "redclaw.tools.toolsets",
         "redclaw.tools.content_scan",
         "redclaw.tools.assistant_tools",
+        "redclaw.tools.agi_tools",
         "redclaw.runtime",
         "redclaw.runtime.conversation",
         "redclaw.runtime.session",
@@ -46,6 +47,10 @@ a = Analysis(
         "redclaw.runtime.subagent",
         "redclaw.runtime.subagent_types",
         "redclaw.runtime.usage",
+        "redclaw.runtime.soul",
+        "redclaw.runtime.event_bus",
+        "redclaw.runtime.autonomous",
+        "redclaw.runtime.context_budget",
         "redclaw.assistant",
         "redclaw.assistant.config",
         "redclaw.assistant.tasks",
@@ -59,6 +64,9 @@ a = Analysis(
         "redclaw.crypt.crypt",
         "redclaw.crypt.extractor",
         "redclaw.crypt.metrics",
+        "redclaw.crypt.dna",
+        "redclaw.crypt.dream",
+        "redclaw.crypt.karma",
         "redclaw.api",
         "redclaw.api.client",
         "redclaw.api.providers",
