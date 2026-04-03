@@ -20,9 +20,16 @@ def build_system_prompt(
     parts: list[str] = []
 
     # Base identity
+    # Extract persona name from assistant_context if present
+    name = "RedClaw"
+    if assistant_context:
+        for line in assistant_context.split("\n"):
+            if line.startswith("Your name is ") and line.endswith("."):
+                name = line[len("Your name is "):-1]
+                break
     if mode == "assistant":
         parts.append(
-            "You are RedClaw, a proactive personal assistant. You help users manage their tasks, "
+            f"You are {name}, a proactive personal assistant. You help users manage their tasks, "
             "reminders, notes, and daily life. You can also help with coding, web research, and "
             "general questions. Be concise, friendly, and helpful.\n"
         )
