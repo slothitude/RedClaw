@@ -27,6 +27,8 @@ All interfaces share the same provider-agnostic LLM client, conversation loop, t
 - **Permission tiers** — ask, read_only, workspace_write, danger_full_access
 - **Hooks** — pre/post tool shell hooks for custom automation
 - **Content security** — injection, exfiltration, and invisible unicode scanning
+- **Assistant mode** — tasks, notes, reminders, scheduler, briefings with configurable persona name
+- **Knowledge graph** — Cognee-backed persistent knowledge (add, cognify, search, memify, prune)
 
 ## Dependencies
 
@@ -90,6 +92,10 @@ python -m redclaw --mode dashboard
 | `--stt-url` | STT server URL |
 | `--search-url` | SearXNG instance URL |
 | `--skills-dir` | Custom skills directory |
+| `--assistant` | Enable assistant mode (Telegram) with tasks, notes, reminders |
+| `--knowledge` | Enable Cognee knowledge graph memory |
+| `--knowledge-dir` | Knowledge graph data directory |
+| `--knowledge-api-key` | LLM API key for Cognee processing |
 
 ### Slash Commands (REPL)
 
@@ -123,6 +129,10 @@ python -m redclaw --mode dashboard
 | `web_reader` | read only | Fetch and read web pages |
 | `memory` | workspace write | Store, recall, and search persistent memories |
 | `subagent` | workspace write | Delegate tasks to isolated sub-agents |
+| `task` | workspace write | Manage to-do tasks (add, list, update, delete, search) |
+| `note` | workspace write | Manage notes (add, list, view, delete, search) |
+| `reminder` | workspace write | Manage reminders with scheduling and due-check |
+| `knowledge` | workspace write | Cognee knowledge graph (add, cognify, search, memify, prune) |
 
 ## Architecture
 
@@ -131,7 +141,9 @@ redclaw/
   api/            Provider-agnostic LLM client, SSE parser, provider registry
   runtime/        Conversation loop, session, compaction, permissions, hooks,
                   subagents (with bloodlines, retry, crypt wisdom), prompt builder
-  tools/          Core tools, toolsets, memory, content scanning
+  assistant/      Personal assistant: tasks, notes, reminders, scheduler, briefings
+  memory_graph/   Cognee-backed knowledge graph memory
+  tools/          Core tools, toolsets, memory, content scanning, assistant tools
   skills/         Skill discovery, loading, agent-managed CRUD, security scanner
   crypt/          Wisdom inheritance: bloodlines, entombment, dharma, metrics
   channels/       Abstract messaging layer (base + Telegram)
