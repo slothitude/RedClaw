@@ -97,7 +97,16 @@ MCP Client (redclaw/mcp_client.py)
 
 ### CLI flags
 
-Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`, `--assistant`, `--knowledge`, `--knowledge-dir`, `--knowledge-api-key`, `--agi`, `--agi-interval`
+Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`, `--assistant`, `--knowledge`, `--knowledge-dir`, `--knowledge-api-key`, `--agi`, `--agi-interval`, `--update`
+
+### Force Update
+
+`--update` flag triggers `force_update()` in `redclaw/updater.py`:
+- Finds repo root by walking up from package directory looking for `.git/`
+- Runs `git pull` in the repo root
+- Runs `pip install -e .` to reinstall
+- Shows version before/after
+- Works for source/pip installs; frozen exe uses the existing `_do_update()` path (downloads new exe from GitHub release)
 
 ## Subsystems
 
