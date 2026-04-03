@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/icon.png" alt="RedClaw" width="200">
   <h1>RedClaw</h1>
-  <p><strong>A minimal, provider-agnostic AI coding agent</strong></p>
+  <p><strong>A minimal, provider-agnostic AI coding agent with AGI mode</strong></p>
 </div>
 
 ## Interfaces
@@ -9,6 +9,7 @@
 | Mode | Description |
 |---|---|
 | **REPL** | Interactive CLI coding agent with streaming, sessions, and compaction |
+| **AGI** | Autonomous goal-pursuing agent — background executive with SOUL constitution, DNA traits, dream synthesis, and karma |
 | **Dashboard** | Web config GUI + process launcher (port 9090) |
 | **WebChat** | Browser-based chat with embedded UI (port 8080) |
 | **Telegram** | Chat with your agent anywhere, file upload/download, assistant mode |
@@ -22,6 +23,7 @@ All interfaces share the same LLM client, conversation loop, tools, session pers
 - **6 core tools** — bash, read_file, write_file, edit_file, glob_search, grep_search
 - **Web tools** — web search (SearXNG) and web reader
 - **Subagents with bloodlines** — typed workers (coder, searcher, general) with retry-with-reflection and wisdom inheritance
+- **AGI mode** — autonomous goal-pursuing executive with SOUL constitution, evolving DNA traits, dream synthesis, and karma alignment
 - **Skills system** — agent-manageable YAML+Python plugins
 - **MCP client** — connect external tool servers via SSE protocol
 - **Persistent memory** — frozen snapshot pattern with security scanning
@@ -93,9 +95,13 @@ redclaw
 
 # Skip the menu — go straight to a mode
 redclaw --mode repl
+redclaw --mode agi          # Autonomous goal-pursuing agent
 redclaw --mode dashboard
 redclaw --mode webchat
 redclaw --mode telegram
+
+# AGI with custom interval and subagents
+redclaw --agi --agi-interval 30
 
 # Use a specific provider and model
 redclaw --provider openai --model gpt-4o
@@ -129,6 +135,8 @@ redclaw --permission-mode read_only
 | `--knowledge` | Enable Cognee knowledge graph memory |
 | `--knowledge-dir` | Knowledge graph data directory |
 | `--knowledge-api-key` | LLM API key for Cognee processing |
+| `--agi` | Enable AGI mode — autonomous goals, SOUL, DNA traits, dream synthesis, karma |
+| `--agi-interval` | AGI executive loop interval in seconds (default: 60) |
 
 ### Slash Commands (REPL)
 
@@ -141,6 +149,9 @@ redclaw --permission-mode read_only
 | `/model` | Show current model |
 | `/session` | Show session info |
 | `/quit` | Exit |
+| `/goals` | Show AGI goal queue (AGI mode only) |
+| `/karma` | Show karma alignment scores (AGI mode only) |
+| `/reflect` | Show AGI self-reflection (AGI mode only) |
 
 ### Godot App
 
@@ -166,6 +177,7 @@ redclaw --permission-mode read_only
 | `note` | workspace write | Manage notes (add, list, view, delete, search) |
 | `reminder` | workspace write | Manage reminders with scheduling and due-check |
 | `knowledge` | workspace write | Cognee knowledge graph (add, cognify, search, memify, prune) |
+| `execute_goal` | workspace write | AGI goal management (add, list, status, cancel) — requires `--agi` |
 
 ## Architecture
 
@@ -173,12 +185,15 @@ redclaw --permission-mode read_only
 redclaw/
   api/            Provider-agnostic LLM client, SSE parser, provider registry
   runtime/        Conversation loop, session, compaction, permissions, hooks,
-                  subagents (with bloodlines, retry, crypt wisdom), prompt builder
+                  subagents (with bloodlines, retry, crypt wisdom), prompt builder,
+                  AGI: soul, event_bus, autonomous executive, context budget
   assistant/      Personal assistant: tasks, notes, reminders, scheduler, briefings
   memory_graph/   Cognee-backed knowledge graph memory
-  tools/          Core tools, toolsets, memory, content scanning, assistant tools
+  tools/          Core tools, toolsets, memory, content scanning, assistant tools,
+                  AGI goal management tool
   skills/         Skill discovery, loading, agent-managed CRUD, security scanner
-  crypt/          Wisdom inheritance: bloodlines, entombment, dharma, metrics
+  crypt/          Wisdom inheritance: bloodlines, entombment, dharma, metrics,
+                  AGI: DNA traits, dream synthesis, karma observer
   channels/       Abstract messaging layer (base + Telegram)
   mcp_client.py   MCP SSE client for external tool servers
   cli.py          REPL with rich rendering and interactive mode chooser

@@ -113,6 +113,9 @@ class TelegramSession:
             # Register assistant tools
             self._register_assistant_tools()
 
+            # AGI subsystem — project-managing meeseek subagents
+            self._init_agi(client, provider, model)
+
             # Build context
             pending_tasks = len(self.tasks_store.list_tasks(status="pending"))
             pending_reminders = len(self.reminders_store.get_pending())
@@ -120,8 +123,23 @@ class TelegramSession:
             assistant_context = (
                 f"Current time: {now}\n"
                 f"Pending tasks: {pending_tasks}\n"
-                f"Pending reminders: {pending_reminders}"
+                f"Pending reminders: {pending_reminders}\n"
             )
+
+            # Inject AGI status into assistant context
+            if hasattr(self, 'agi_executive') and self.agi_executive:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Can't await in __init__ during running loop — inject placeholder
+                        assistant_context += "\nAGI Goals: Loading...\n"
+                    else:
+                        agi_status = loop.run_until_complete(self.agi_executive.get_status_summary())
+                        if agi_status:
+                            assistant_context += f"\nAGI Goals:\n{agi_status}\n"
+                except RuntimeError:
+                    pass
+
             persona = self.assistant_config.persona_name
             if persona:
                 assistant_context = f"Your name is {persona}.\n" + assistant_context
@@ -254,6 +272,111 @@ class TelegramSession:
             permission=PermissionLevel.WORKSPACE_WRITE,
             execute=execute_knowledge,
         ))
+
+    def _init_agi(self, client: Any, provider: Any, model: str) -> None:
+        """Initialize AGI subsystem for project-managing meeseek subagents.
+
+        Wires up: Crypt, DNAManager, DreamSynthesizer, EventBus, KarmaObserver,
+        SubagentSpawner, and AutonomousExecutive. Registers execute_goal and
+        subagent tools so the assistant can create goals and delegate work.
+        """
+        from redclaw.crypt.crypt import Crypt
+        from redclaw.crypt.dna import DNAManager
+        from redclaw.crypt.dream import DreamSynthesizer
+        from redclaw.crypt.karma import KarmaObserver
+        from redclaw.runtime.event_bus import EventBus, EventLogger
+        from redclaw.runtime.soul import load_soul, verify_soul_integrity
+        from redclaw.runtime.subagent import SubagentSpawner, execute_subagent
+        from redclaw.runtime.autonomous import AutonomousExecutive
+        from redclaw.tools.agi_tools import register_agi_tools
+        from redclaw.api.types import PermissionLevel
+        from redclaw.tools.registry import ToolSpec
+        import asyncio
+
+        cwd = self.working_dir
+
+        # Load SOUL constitution
+        soul_text = load_soul(cwd)
+        verify_soul_integrity(soul_text, cwd)
+        self.soul_text = soul_text
+
+        # Core AGI subsystems
+        dna_manager = DNAManager()
+        crypt = Crypt(dna_manager=dna_manager)
+        dream = DreamSynthesizer(client, provider, model)
+        crypt._dream_synthesizer = dream  # wire dream trigger into entomb
+
+        event_bus = EventBus()
+        event_bus.subscribe(EventLogger())
+        karma = KarmaObserver(soul_text, event_bus)
+        event_bus.subscribe(karma)
+
+        # Subagent spawner with DNA awareness
+        spawner = SubagentSpawner(
+            client=client,
+            provider=provider,
+            model=model,
+            tools=self.tools,
+            crypt=crypt,
+            dna_manager=dna_manager,
+        )
+        self.subagent_spawner = spawner
+
+        # Register subagent tool (delegates work to meeseek subagents)
+        self.tools.register_tool(ToolSpec(
+            name="subagent",
+            description=(
+                "Delegate a task to an isolated meeseek sub-agent. "
+                "Provide a single task or newline-separated tasks for batch. "
+                "subagent_type: 'coder' (code changes), 'searcher' (find info), or 'general'. "
+                "Use this to parallelize work across specialized subagents."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Single task description"},
+                    "tasks": {"type": "string", "description": "Newline-separated tasks for batch execution"},
+                    "subagent_type": {
+                        "type": "string",
+                        "description": "Type: coder, searcher, general (default: general)",
+                        "default": "general",
+                    },
+                },
+                "required": ["task"],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=lambda **kw: execute_subagent(spawner=spawner, **kw),
+        ))
+
+        # Register goal management tool
+        register_agi_tools(self.tools, event_bus)
+
+        # Autonomous executive (background goal-pursuing loop)
+        self.agi_executive = AutonomousExecutive(
+            client=client,
+            provider=provider,
+            model=model,
+            tools=self.tools,
+            spawner=spawner,
+            crypt=crypt,
+            dna_manager=dna_manager,
+            dream_synthesizer=dream,
+            event_bus=event_bus,
+            soul_text=soul_text,
+            working_dir=cwd,
+            interval=120,  # 2min in assistant mode
+        )
+
+        # Start executive as background task
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self.agi_executive.run())
+            logger.info("AGI executive started for user %s", self.user_id)
+        except RuntimeError:
+            logger.warning("Could not start AGI executive — no event loop")
+
+        logger.info("AGI subsystem initialized for user %s (DNA + Dream + Karma + Executive)", self.user_id)
 
     async def init_mcp(self) -> None:
         """Discover and register MCP tools, retrying failed servers."""
