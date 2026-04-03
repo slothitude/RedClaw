@@ -167,6 +167,13 @@ class SubagentSpawner:
                 # Entomb successful result
                 if self.crypt:
                     self.crypt.entomb(result, task, subagent_type)
+                    # Leak wisdom back to the main agent
+                    wisdom = self.crypt.load_bloodline_wisdom(subagent_type)
+                    if wisdom:
+                        result.output += f"\n\n[Bloodline Wisdom Gained]\n{wisdom[:500]}"
+                    dharma = self.crypt.load_dharma()
+                    if dharma:
+                        result.output += f"\n\n[Cross-cutting Patterns]\n{dharma[:300]}"
                 return result
 
             # Track failure for reflection
@@ -187,6 +194,10 @@ class SubagentSpawner:
         )
         if self.crypt:
             self.crypt.entomb(final_result, task, subagent_type)
+            # Leak warnings back even on failure
+            wisdom = self.crypt.load_bloodline_wisdom(subagent_type)
+            if wisdom:
+                final_result.output += f"\n\n[Bloodline Warnings Learned]\n{wisdom[:500]}"
         return final_result
 
     async def _execute(

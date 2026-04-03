@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="RedClaw" width="200">
+  <img src="assets/icon.png" alt="RedClaw" width="200">
   <h1>RedClaw</h1>
   <p><strong>A minimal, provider-agnostic AI coding agent</strong></p>
 </div>

@@ -70,9 +70,16 @@ def build_system_prompt(
             "\nSkill management:\n"
             "- After completing complex multi-step tasks, consider creating a reusable skill.\n"
             "- Use skills_list to see existing skills, skill_view to inspect them.\n"
-            "- Use skill_manage to create, update, patch, or delete skills.\n"
+            "- Use skill_manage to create, update, patch, delete, evolve, or record usage.\n"
+            "- Use skill_manage with action='record_usage' after each skill invocation to track reliability.\n"
+            "- Use skill_manage with action='evolve' to auto-improve low-performing skills.\n"
             "- Skills are stored as SKILL.md files in ~/.redclaw/skills/<name>/.\n"
         )
+
+        # Inject skill experience from metrics
+        experience = _skills_experience_block()
+        if experience:
+            parts.append(experience)
 
     # Tool usage guidelines
     parts.append(
@@ -129,3 +136,44 @@ def _read_claw_md(cwd: str) -> str | None:
                 return path.read_text(encoding="utf-8", errors="replace")
 
     return None
+
+
+def _skills_experience_block() -> str:
+    """Read skill metrics and return guidance about reliability."""
+    import json
+
+    skills_dir = Path.home() / ".redclaw" / "skills"
+    if not skills_dir.is_dir():
+        return ""
+
+    entries: list[str] = []
+    for skill_dir in sorted(skills_dir.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        metrics_path = skill_dir / ".metrics.json"
+        if not metrics_path.is_file():
+            continue
+        try:
+            metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        usage = metrics.get("usage_count", 0)
+        if usage == 0:
+            continue
+
+        success = metrics.get("success_count", 0)
+        rate = (success / usage) * 100
+        name = skill_dir.name
+
+        if rate >= 80:
+            entries.append(f"- Skill '{name}': {rate:.0f}% success ({usage} uses) — high reliability, trust it")
+        elif rate >= 50:
+            entries.append(f"- Skill '{name}': {rate:.0f}% success ({usage} uses) — moderate, verify results")
+        else:
+            entries.append(f"- Skill '{name}': {rate:.0f}% success ({usage} uses) — LOW reliability, consider alternatives or use skill_manage evolve")
+
+    if not entries:
+        return ""
+
+    return "\nSkill experience (based on past usage):\n" + "\n".join(entries)

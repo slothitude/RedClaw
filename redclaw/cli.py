@@ -182,8 +182,10 @@ async def _run_repl(
     # Subagent system
     subagent_spawner = None
     if enable_subagent:
+        from redclaw.crypt.crypt import Crypt
         from redclaw.runtime.subagent import SubagentSpawner, execute_subagent
-        subagent_spawner = SubagentSpawner(client, provider, model, tools)
+        crypt_manager = Crypt()
+        subagent_spawner = SubagentSpawner(client, provider, model, tools, crypt=crypt_manager)
         from redclaw.api.types import PermissionLevel
         from redclaw.tools.registry import ToolSpec
         tools.register_tool(ToolSpec(
@@ -287,13 +289,13 @@ def _register_skills_tools(tools: ToolExecutor) -> None:
     ))
     tools.register_tool(ToolSpec(
         name="skill_manage",
-        description="Create, update, patch, or delete skills. action: create, update, patch, delete.",
+        description="Create, update, patch, delete, evolve, or record usage for skills. action: create, update, patch, delete, evolve, record_usage.",
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "description": "Action: create, update, patch, delete"},
+                "action": {"type": "string", "description": "Action: create, update, patch, delete, evolve, record_usage"},
                 "name": {"type": "string", "description": "Skill name"},
-                "description": {"type": "string", "description": "Skill description"},
+                "description": {"type": "string", "description": "Skill description (or 'true'/'false' for record_usage success)"},
                 "instructions": {"type": "string", "description": "Skill instructions (markdown body)"},
                 "version": {"type": "string", "description": "Version string", "default": "1.0"},
             },
