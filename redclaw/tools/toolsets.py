@@ -48,6 +48,14 @@ BUILTIN_TOOLSETS: dict[str, Toolset] = {
         name="readonly",
         tools=["read_file", "glob_search", "grep_search"],
     ),
+    "assistant": Toolset(
+        name="assistant",
+        tools=["task", "note", "reminder"],
+    ),
+    "knowledge": Toolset(
+        name="knowledge",
+        tools=["knowledge"],
+    ),
 }
 
 

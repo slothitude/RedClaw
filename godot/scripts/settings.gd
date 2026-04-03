@@ -13,10 +13,21 @@ var _settings: Dictionary = {
 	"working_dir": "",
 	# Per-provider API keys
 	"api_keys": {},
+	# Assistant / persona config
+	"assistant_mode": false,
+	"persona_name": "",
+	"timezone": "UTC",
+	"briefing_time": "07:30",
+	"briefing_enabled": true,
+	"briefing_weather": true,
+	"briefing_news": true,
+	"briefing_tasks": true,
+	"weather_location": "",
+	"news_topics": "tech",
 }
 
 
-func _ready() -> None:
+func _ready() -> void:
 	load_settings()
 
 
@@ -47,7 +58,8 @@ func get_api_key(provider: String) -> String:
 func save_settings() -> bool:
 	var file: FileAccess = FileAccess.open(SETTINGS_FILE, FileAccess.WRITE)
 	if file == null:
-		push_warning("Failed to save settings: " + FileAccess.get_open_error())
+		var err: int = FileAccess.get_open_error()
+		push_warning("Failed to save settings: error code %d" % err)
 		return false
 	var json_str: String = JSON.stringify(_settings, "\t")
 	file.store_string(json_str)
@@ -95,5 +107,15 @@ func reset_settings() -> void:
 		"perm_mode": "ask",
 		"working_dir": "",
 		"api_keys": {},
+		"assistant_mode": false,
+		"persona_name": "",
+		"timezone": "UTC",
+		"briefing_time": "07:30",
+		"briefing_enabled": true,
+		"briefing_weather": true,
+		"briefing_news": true,
+		"briefing_tasks": true,
+		"weather_location": "",
+		"news_topics": "tech",
 	}
 	save_settings()

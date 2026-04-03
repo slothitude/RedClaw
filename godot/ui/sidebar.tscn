@@ -1,8 +1,11 @@
-[gd_scene format=3]
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/sidebar.gd" id="1"]
 
 [node name="Sidebar" type="VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(200, 0)
+custom_minimum_size = Vector2(220, 0)
+script = ExtResource("1")
 
 [node name="SessionsLabel" type="Label" parent="."]
 layout_mode = 2
@@ -49,3 +52,22 @@ text = "Permission Mode:"
 
 [node name="PermModeOpt" type="OptionButton" parent="."]
 layout_mode = 2
+
+[node name="HSep2" type="HSeparator" parent="."]
+layout_mode = 2
+
+[node name="AssistantLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Assistant"
+
+[node name="AssistantCheck" type="CheckBox" parent="."]
+layout_mode = 2
+text = "Assistant mode"
+
+[node name="PersonaNameLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Persona name:"
+
+[node name="PersonaNameInput" type="LineEdit" parent="."]
+layout_mode = 2
+placeholder_text = "e.g. Jarvis, Alfred"

@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--permission-mode", choices=["read_only", "workspace_write", "danger_full_access", "ask"], default="ask", help="Permission mode")
     p.add_argument("--session", default=None, help="Resume session ID")
     p.add_argument("--working-dir", default=None, help="Working directory (default: cwd)")
-    p.add_argument("--mode", choices=["repl", "rpc", "telegram", "webchat"], default="repl", help="Run mode: repl, rpc, telegram, or webchat")
+    p.add_argument("--mode", choices=["repl", "rpc", "telegram", "webchat", "dashboard"], default="repl", help="Run mode: repl, rpc, telegram, webchat, or dashboard")
     p.add_argument("--max-tokens", type=int, default=8192, help="Max output tokens")
     p.add_argument("--verbose", action="store_true", help="Verbose logging")
 
@@ -60,6 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
     # WebChat options
     wc = p.add_argument_group("WebChat")
     wc.add_argument("--port", type=int, default=8080, help="WebChat port (default: 8080)")
+
+    # Dashboard options
+    db = p.add_argument_group("Dashboard")
+    db.add_argument("--dashboard-port", type=int, default=9090, help="Dashboard port (default: 9090)")
 
     # Skills
     sk = p.add_argument_group("Skills")
@@ -74,6 +78,10 @@ def build_parser() -> argparse.ArgumentParser:
     adv = p.add_argument_group("Advanced")
     adv.add_argument("--compact-llm", action="store_true", help="Enable LLM-based context compaction")
     adv.add_argument("--subagent", action="store_true", help="Enable subagent delegation")
+    adv.add_argument("--assistant", action="store_true", help="Enable personal assistant mode (Telegram)")
+    adv.add_argument("--knowledge", action="store_true", help="Enable Cognee knowledge graph memory")
+    adv.add_argument("--knowledge-dir", default=None, help="Knowledge graph data directory (default: ~/.redclaw/knowledge)")
+    adv.add_argument("--knowledge-api-key", default=None, help="LLM API key for Cognee entity extraction")
 
     # MCP / Voice
     mcp = p.add_argument_group("MCP")
@@ -425,6 +433,7 @@ def main() -> int | None:
             search_url=args.search_url,
             reader_url=args.reader_url,
             mcp_servers=args.mcp_servers,
+            assistant_mode=args.assistant,
         )
         asyncio.run(bot.run())
     elif args.mode == "webchat":
@@ -437,6 +446,9 @@ def main() -> int | None:
             working_dir=args.working_dir,
             port=args.port,
         ))
+    elif args.mode == "dashboard":
+        from redclaw.dashboard import run_dashboard
+        run_dashboard(port=args.dashboard_port)
     else:
         asyncio.run(_run_repl(
             provider_name=args.provider,

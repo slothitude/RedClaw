@@ -84,6 +84,8 @@ class ConversationRuntime:
         max_tool_rounds: int = 50,
         memory: Any | None = None,
         subagent_spawner: Any | None = None,
+        mode: str = "coder",
+        assistant_context: str = "",
     ) -> None:
         self.client = client
         self.provider = provider
@@ -100,6 +102,8 @@ class ConversationRuntime:
         self._abort = False
         self.memory = memory
         self.subagent_spawner = subagent_spawner
+        self._mode = mode
+        self._assistant_context = assistant_context
 
     @property
     def system_prompt(self) -> str:
@@ -111,6 +115,8 @@ class ConversationRuntime:
                 self.working_dir,
                 memory_snapshot=memory_snapshot,
                 skills_guidance=hasattr(self.tools.specs, 'get') and 'skills_list' in self.tools.specs,
+                mode=self._mode,
+                assistant_context=self._assistant_context,
             )
         return self._system_prompt
 

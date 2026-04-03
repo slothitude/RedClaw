@@ -1,7 +1,7 @@
-## Sidebar — session list and settings controls.
+## Sidebar — session list, settings controls, and assistant toggle.
 extends VBoxContainer
 
-signal settings_changed(provider: String, model: String, api_key: String, perm_mode: String)
+signal settings_changed(settings: Dictionary)
 signal session_selected(session_id: String)
 signal new_session_requested
 
@@ -12,11 +12,13 @@ var _session_manager: Node = null
 @onready var model_input: LineEdit = $ModelInput
 @onready var api_key_input: LineEdit = $ApiKeyInput
 @onready var perm_mode_opt: OptionButton = $PermModeOpt
+@onready var assistant_check: CheckBox = $AssistantCheck
+@onready var persona_name_input: LineEdit = $PersonaNameInput
 
 
 func _ready() -> void:
 	# Populate provider options
-	var providers: Array = ["openai", "anthropic", "ollama", "groq", "deepseek", "openrouter"]
+	var providers: Array = ["openai", "anthropic", "ollama", "groq", "deepseek", "openrouter", "zai"]
 	for p in providers:
 		provider_opt.add_item(p)
 
@@ -31,6 +33,8 @@ func _ready() -> void:
 	model_input.text_changed.connect(func(_t): _on_settings_changed())
 	api_key_input.text_changed.connect(func(_t): _on_settings_changed())
 	perm_mode_opt.item_selected.connect(_on_settings_changed)
+	assistant_check.toggled.connect(func(_t): _on_settings_changed())
+	persona_name_input.text_changed.connect(func(_t): _on_settings_changed())
 	session_list.item_selected.connect(_on_session_selected)
 
 
@@ -54,6 +58,8 @@ func get_settings() -> Dictionary:
 		"model": model_input.text,
 		"api_key": api_key_input.text,
 		"perm_mode": perm_mode_opt.get_item_text(perm_mode_opt.selected),
+		"assistant_mode": assistant_check.button_pressed,
+		"persona_name": persona_name_input.text,
 	}
 
 
@@ -72,11 +78,14 @@ func set_settings(settings: Dictionary) -> void:
 			if perm_mode_opt.get_item_text(i) == settings["perm_mode"]:
 				perm_mode_opt.select(i)
 				break
+	if settings.has("assistant_mode"):
+		assistant_check.button_pressed = settings["assistant_mode"]
+	if settings.has("persona_name"):
+		persona_name_input.text = settings["persona_name"]
 
 
 func _on_settings_changed(_index: int = -1) -> void:
-	var s: Dictionary = get_settings()
-	settings_changed.emit(s.provider, s.model, s.api_key, s.perm_mode)
+	settings_changed.emit(get_settings())
 
 
 func _on_session_selected(index: int) -> void:

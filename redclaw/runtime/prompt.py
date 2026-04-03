@@ -12,16 +12,25 @@ def build_system_prompt(
     extra_instructions: str = "",
     memory_snapshot: str = "",
     skills_guidance: bool = False,
+    mode: str = "coder",
+    assistant_context: str = "",
 ) -> str:
     """Build the system prompt with context."""
     cwd = working_dir or str(Path.cwd())
     parts: list[str] = []
 
     # Base identity
-    parts.append(
-        "You are RedClaw, an AI coding agent. You help users with software engineering tasks "
-        "by reading files, searching code, writing/editing files, and running commands.\n"
-    )
+    if mode == "assistant":
+        parts.append(
+            "You are RedClaw, a proactive personal assistant. You help users manage their tasks, "
+            "reminders, notes, and daily life. You can also help with coding, web research, and "
+            "general questions. Be concise, friendly, and helpful.\n"
+        )
+    else:
+        parts.append(
+            "You are RedClaw, an AI coding agent. You help users with software engineering tasks "
+            "by reading files, searching code, writing/editing files, and running commands.\n"
+        )
 
     # Working directory
     parts.append(f"Working directory: {cwd}")
@@ -39,6 +48,10 @@ def build_system_prompt(
     # Extra instructions
     if extra_instructions:
         parts.append(f"\nAdditional instructions:\n{extra_instructions}")
+
+    # Assistant context (current time, pending tasks, etc.)
+    if assistant_context:
+        parts.append(f"\nCurrent context:\n{assistant_context}")
 
     # Memory snapshot
     if memory_snapshot:
