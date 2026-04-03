@@ -913,6 +913,7 @@ function getConfig() {
     reader_url: v('reader_url'),
     telegram_token: v('telegram_token'),
     telegram_user_id: v('telegram_user_id'),
+    assistant: b('assistant'),
   };
 }
 
@@ -933,6 +934,7 @@ function setConfig(c) {
   chk('compact_llm', c.compact_llm);
   chk('subagent', c.subagent);
   chk('verbose', c.verbose);
+  chk('assistant', c.assistant);
   set('mcp_servers', c.mcp_servers);
   set('tts_url', c.tts_url);
   set('stt_url', c.stt_url);
