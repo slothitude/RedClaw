@@ -6,12 +6,6 @@ from PyInstaller.utils.hooks import copy_metadata
 
 block_cipher = None
 
-# --- version from package ---------------------------------------------------
-try:
-    version = importlib.metadata.version("redclaw")
-except importlib.metadata.PackageNotFoundError:
-    version = "1.0.0"
-
 # --- collect metadata for packages that use it at runtime -------------------
 datas = []
 for pkg in ("flask", "httpx", "rich", "telegram", "aiohttp", "yaml"):
@@ -133,5 +127,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version=version,
 )

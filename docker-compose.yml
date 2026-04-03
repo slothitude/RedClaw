@@ -1,0 +1,26 @@
+services:
+  redclaw:
+    build: .
+    image: redclaw:latest
+    container_name: redclaw
+    volumes:
+      - redclaw-data:/root/.redclaw
+      - ./workspace:/workspace
+    ports:
+      - "8080:8080"   # WebChat
+      - "9090:9090"   # Dashboard
+    environment:
+      - REDCLAW_PROVIDER=${REDCLAW_PROVIDER:-openai}
+      - REDCLAW_MODEL=${REDCLAW_MODEL:-}
+      - REDCLAW_BASE_URL=${REDCLAW_BASE_URL:-}
+      # Pass API keys through env
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    # Override command per mode:
+    #   docker compose run redclaw --mode webchat --webchat-port 8080
+    #   docker compose run redclaw --mode dashboard --dashboard-port 9090
+    #   docker compose run redclaw --mode telegram --telegram-token TOKEN
+    command: ["--help"]
+
+volumes:
+  redclaw-data:
