@@ -9,6 +9,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
+from typing import Any
 
 # Fix Windows cp1252 encoding for Unicode in console
 if sys.platform == "win32":
@@ -48,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--permission-mode", choices=["read_only", "workspace_write", "danger_full_access", "ask"], default="ask", help="Permission mode")
     p.add_argument("--session", default=None, help="Resume session ID")
     p.add_argument("--working-dir", default=None, help="Working directory (default: cwd)")
-    p.add_argument("--mode", choices=["repl", "rpc", "telegram", "webchat", "dashboard"], default="repl", help="Run mode: repl, rpc, telegram, webchat, or dashboard")
+    p.add_argument("--mode", choices=["repl", "rpc", "telegram", "webchat", "dashboard", "agi"], default="repl", help="Run mode: repl, rpc, telegram, webchat, dashboard, or agi")
     p.add_argument("--max-tokens", type=int, default=8192, help="Max output tokens")
     p.add_argument("--verbose", action="store_true", help="Verbose logging")
 
@@ -78,6 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     adv = p.add_argument_group("Advanced")
     adv.add_argument("--compact-llm", action="store_true", help="Enable LLM-based context compaction")
     adv.add_argument("--subagent", action="store_true", help="Enable subagent delegation")
+    adv.add_argument("--agi", action="store_true", help="Enable AGI mode (autonomous goals, soul, DNA traits)")
+    adv.add_argument("--agi-interval", type=int, default=60, help="AGI executive loop interval in seconds (default: 60)")
     adv.add_argument("--assistant", action="store_true", help="Enable personal assistant mode (Telegram)")
     adv.add_argument("--knowledge", action="store_true", help="Enable Cognee knowledge graph memory")
     adv.add_argument("--knowledge-dir", default=None, help="Knowledge graph data directory (default: ~/.redclaw/knowledge)")
@@ -124,6 +127,8 @@ async def _run_repl(
     memory_dir: str | None = None,
     compact_llm: bool = False,
     enable_subagent: bool = False,
+    agi_mode: bool = False,
+    agi_interval: int = 60,
 ) -> None:
     """Run the interactive REPL."""
     cwd = working_dir or str(Path.cwd())
@@ -181,7 +186,8 @@ async def _run_repl(
 
     # Subagent system
     subagent_spawner = None
-    if enable_subagent:
+    crypt_manager = None
+    if enable_subagent or agi_mode:
         from redclaw.crypt.crypt import Crypt
         from redclaw.runtime.subagent import SubagentSpawner, execute_subagent
         crypt_manager = Crypt()
@@ -203,6 +209,68 @@ async def _run_repl(
             execute=lambda **kw: execute_subagent(spawner=subagent_spawner, **kw),
         ))
 
+    # AGI mode setup
+    soul_text = ""
+    agi_context = ""
+    agi_executive = None
+    event_bus = None
+    dna_manager = None
+    dream_synthesizer = None
+    if agi_mode:
+        from redclaw.runtime.soul import load_soul, verify_soul_integrity
+        soul_text = load_soul(cwd)
+        integrity_ok = verify_soul_integrity(soul_text, cwd)
+        if not integrity_ok:
+            console.print("[yellow]Warning: SOUL integrity check failed. Using loaded values.[/]")
+        console.print("[bold cyan]AGI mode activated[/]")
+        console.print(f"[dim]SOUL loaded ({len(soul_text)} chars)[/]")
+
+        # Ensure subagent is enabled for AGI
+        if not subagent_spawner:
+            from redclaw.crypt.crypt import Crypt
+            from redclaw.runtime.subagent import SubagentSpawner
+            crypt_manager = Crypt()
+            subagent_spawner = SubagentSpawner(client, provider, model, tools, crypt=crypt_manager)
+
+        # Phase 2+: DNA, Dream, EventBus, Karma, Executive
+        from redclaw.crypt.dna import DNAManager
+        dna_manager = DNAManager()
+
+        from redclaw.crypt.dream import DreamSynthesizer
+        dream_synthesizer = DreamSynthesizer(client, provider, model)
+
+        from redclaw.runtime.event_bus import EventBus, EventLogger
+        event_bus = EventBus()
+        event_bus.subscribe(EventLogger())
+
+        from redclaw.crypt.karma import KarmaObserver
+        karma_observer = KarmaObserver(soul_text, event_bus)
+        event_bus.subscribe(karma_observer)
+
+        # Wire DNA into subagent spawner
+        subagent_spawner._dna_manager = dna_manager
+
+        # AGI goal tool
+        from redclaw.tools.agi_tools import register_agi_tools
+        register_agi_tools(tools, event_bus)
+
+        # Autonomous executive (Phase 5)
+        from redclaw.runtime.autonomous import AutonomousExecutive
+        agi_executive = AutonomousExecutive(
+            client=client,
+            provider=provider,
+            model=model,
+            tools=tools,
+            spawner=subagent_spawner,
+            crypt=crypt_manager,
+            dna_manager=dna_manager,
+            dream_synthesizer=dream_synthesizer,
+            event_bus=event_bus,
+            soul_text=soul_text,
+            working_dir=cwd,
+            interval=agi_interval,
+        )
+
     rt = ConversationRuntime(
         client=client,
         provider=provider,
@@ -214,11 +282,25 @@ async def _run_repl(
         working_dir=cwd,
         memory=memory_mgr,
         subagent_spawner=subagent_spawner,
+        soul_text=soul_text,
+        agi_context=agi_context,
     )
 
     console.print(f"[bold red]RedClaw[/] {provider_name}/{model}")
+    if agi_mode:
+        console.print("[bold cyan]AGI Mode[/] — Autonomous goal-pursuing agent")
     console.print(f"Session: {session.id} | Dir: {cwd} | Mode: {perm_mode}")
     console.print("Type /help for commands, /quit to exit.\n")
+
+    # Start AGI executive as background task
+    if agi_mode and agi_executive:
+        import asyncio as _asyncio
+        executive_task = _asyncio.create_task(agi_executive.run())
+
+    # Update AGI context periodically
+    if agi_mode and agi_executive:
+        agi_context = await agi_executive.get_status_summary()
+        rt._agi_context = agi_context
 
     # Process initial prompt if given
     if initial_prompt:
@@ -236,11 +318,15 @@ async def _run_repl(
             continue
 
         if user_input.startswith("/"):
-            if _handle_slash_command(user_input, rt, tracker, session):
+            if _handle_slash_command(user_input, rt, tracker, session, agi_executive=agi_executive):
                 break
             continue
 
         await _process_input(rt, user_input, tracker)
+
+    # Shutdown AGI executive
+    if agi_mode and agi_executive:
+        await agi_executive.shutdown()
 
     await client.close()
 
@@ -357,7 +443,10 @@ async def _process_input(rt: ConversationRuntime, user_input: str, tracker: Usag
     console.print(f"[dim]{tracker.summary()}[/]\n")
 
 
-def _handle_slash_command(cmd: str, rt: ConversationRuntime, tracker: UsageTracker, session: Session) -> bool:
+def _handle_slash_command(
+    cmd: str, rt: ConversationRuntime, tracker: UsageTracker, session: Session,
+    agi_executive: Any | None = None,
+) -> bool:
     """Handle slash commands. Returns True if should exit."""
     parts = cmd.split(maxsplit=1)
     command = parts[0].lower()
@@ -366,6 +455,13 @@ def _handle_slash_command(cmd: str, rt: ConversationRuntime, tracker: UsageTrack
     if command in ("/quit", "/exit", "/q"):
         return True
     elif command == "/help":
+        agi_cmds = ""
+        if agi_executive:
+            agi_cmds = (
+                "  /goals    — Show AGI goal queue\n"
+                "  /karma    — Show karma alignment scores\n"
+                "  /reflect  — Show AGI self-reflection\n"
+            )
         console.print(Panel(
             "Commands:\n"
             "  /help     — Show this help\n"
@@ -374,7 +470,8 @@ def _handle_slash_command(cmd: str, rt: ConversationRuntime, tracker: UsageTrack
             "  /clear    — Clear session history\n"
             "  /usage    — Show token usage\n"
             "  /model    — Show current model\n"
-            "  /session  — Show session info",
+            "  /session  — Show session info\n"
+            + agi_cmds,
             title="RedClaw Help",
         ))
     elif command == "/compact":
@@ -389,6 +486,35 @@ def _handle_slash_command(cmd: str, rt: ConversationRuntime, tracker: UsageTrack
         console.print(f"Model: {rt.model}")
     elif command == "/session":
         console.print(f"Session: {session.id} | Messages: {len(session.messages)} | Dir: {session.working_dir}")
+    elif command == "/goals" and agi_executive:
+        goals = agi_executive.get_goals()
+        if not goals:
+            console.print("[dim]No goals in queue.[/]")
+        else:
+            for g in goals:
+                status_color = "green" if g.status == "completed" else "yellow" if g.status == "active" else "dim"
+                console.print(f"  [{status_color}][{g.status}][/] {g.description[:80]}")
+    elif command == "/karma" and agi_executive:
+        from redclaw.crypt.karma import KarmaObserver
+        console.print("[dim]Karma scores shown from latest events.[/]")
+        karma_path = Path.home() / ".redclaw" / "crypt" / "karma.jsonl"
+        if karma_path.is_file():
+            import json
+            lines = karma_path.read_text(encoding="utf-8").strip().split("\n")
+            for line in lines[-5:]:
+                try:
+                    rec = json.loads(line)
+                    score = rec.get("alignment_score", "?")
+                    action = rec.get("action", "")[:60]
+                    console.print(f"  score={score} | {action}")
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        else:
+            console.print("[dim]No karma records yet.[/]")
+    elif command == "/reflect" and agi_executive:
+        import asyncio as _aio
+        reflection = _aio.get_event_loop().run_until_complete(agi_executive.self_reflect())
+        console.print(Panel(reflection or "No reflection available.", title="AGI Self-Reflection"))
     else:
         console.print(f"[yellow]Unknown command: {command}[/]")
 
@@ -404,7 +530,8 @@ def _choose_mode() -> str | None:
     console.print("  [bold]2)[/] [cyan]Dashboard[/]    Web config GUI + process launcher (port 9090)")
     console.print("  [bold]3)[/] [cyan]WebChat[/]      Browser-based chat (port 8080)")
     console.print("  [bold]4)[/] [cyan]Telegram[/]     Telegram bot")
-    console.print("  [bold]5)[/] [cyan]Guide[/]        Open the user guide in your browser")
+    console.print("  [bold]5)[/] [cyan]AGI[/]          Autonomous goal-pursuing agent (REPL + executive)")
+    console.print("  [bold]6)[/] [cyan]Guide[/]        Open the user guide in your browser")
     console.print()
     console.print("  [bold]0)[/] Exit")
     console.print()
@@ -415,15 +542,17 @@ def _choose_mode() -> str | None:
         except (EOFError, KeyboardInterrupt):
             return None
 
-        modes = {"1": "repl", "2": "dashboard", "3": "webchat", "4": "telegram", "5": "guide"}
+        modes = {"1": "repl", "2": "dashboard", "3": "webchat", "4": "telegram", "5": "agi", "6": "guide"}
         if choice == "0" or choice.lower() in ("q", "quit", "exit"):
             return None
-        if choice == "5":
+        if choice == "6":
             _open_guide()
             continue
+        if choice == "5":
+            return "agi"
         if choice in modes:
             return modes[choice]
-        console.print("[yellow]Invalid choice. Enter 0-5.[/]")
+        console.print("[yellow]Invalid choice. Enter 0-6.[/]")
 
 
 def _open_guide() -> None:
@@ -511,6 +640,25 @@ def main() -> int | None:
     elif args.mode == "dashboard":
         from redclaw.dashboard import run_dashboard
         run_dashboard(port=args.dashboard_port)
+    elif args.mode == "agi":
+        asyncio.run(_run_repl(
+            provider_name=args.provider,
+            model=model,
+            base_url=args.base_url,
+            perm_mode=args.permission_mode,
+            session_id=args.session,
+            working_dir=args.working_dir,
+            initial_prompt=args.prompt,
+            skills_dirs=args.skills_dir,
+            skills_manage=args.skills_manage,
+            search_url=args.search_url,
+            reader_url=args.reader_url,
+            memory_dir=args.memory_dir,
+            compact_llm=args.compact_llm,
+            enable_subagent=args.subagent,
+            agi_mode=True,
+            agi_interval=args.agi_interval,
+        ))
     else:
         asyncio.run(_run_repl(
             provider_name=args.provider,

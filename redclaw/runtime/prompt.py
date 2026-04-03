@@ -14,6 +14,8 @@ def build_system_prompt(
     skills_guidance: bool = False,
     mode: str = "coder",
     assistant_context: str = "",
+    soul_text: str = "",
+    agi_context: str = "",
 ) -> str:
     """Build the system prompt with context."""
     cwd = working_dir or str(Path.cwd())
@@ -33,11 +35,32 @@ def build_system_prompt(
             "reminders, notes, and daily life. You can also help with coding, web research, and "
             "general questions. Be concise, friendly, and helpful.\n"
         )
+    elif soul_text or agi_context:
+        parts.append(
+            "You are RedClaw, an autonomous AI agent. You have constitutional values, "
+            "evolving traits, accumulated wisdom, and active goals. You pursue goals "
+            "autonomously while respecting user intent. You help with software engineering "
+            "tasks by reading files, searching code, writing/editing files, and running commands.\n"
+        )
     else:
         parts.append(
             "You are RedClaw, an AI coding agent. You help users with software engineering tasks "
             "by reading files, searching code, writing/editing files, and running commands.\n"
         )
+
+    # Constitutional values (AGI mode)
+    if soul_text:
+        parts.append(f"\nConstitutional values (immutable):\n{soul_text}")
+
+    # AGI context (goals, reflection, DNA traits) — with budgeting
+    if agi_context:
+        from redclaw.runtime.context_budget import budget_context
+        budgeted = budget_context(
+            soul_text=soul_text,
+            reflection=agi_context,
+        )
+        if budgeted:
+            parts.append(f"\nAGI state:\n{budgeted}")
 
     # Working directory
     parts.append(f"Working directory: {cwd}")

@@ -56,6 +56,10 @@ BUILTIN_TOOLSETS: dict[str, Toolset] = {
         name="knowledge",
         tools=["knowledge"],
     ),
+    "agi": Toolset(
+        name="agi",
+        tools=["execute_goal"],
+    ),
 }
 
 

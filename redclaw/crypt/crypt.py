@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class Crypt:
     """Manages bloodline wisdom, entombment, and dharma."""
 
-    def __init__(self, crypt_dir: Path | None = None) -> None:
+    def __init__(self, crypt_dir: Path | None = None, dna_manager: Any | None = None, dream_synthesizer: Any | None = None) -> None:
         self.crypt_dir = crypt_dir or Path.home() / ".redclaw" / "crypt"
         self.crypt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -41,6 +41,12 @@ class Crypt:
         # Load metrics
         self._metrics_path = self.crypt_dir / "metrics.json"
         self._metrics = load_metrics(self._metrics_path)
+
+        # DNA manager (optional — used when AGI mode is active)
+        self._dna_manager = dna_manager
+
+        # Dream synthesizer (optional — triggered after entombment)
+        self._dream_synthesizer = dream_synthesizer
 
     @property
     def metrics(self) -> CryptMetrics:
@@ -168,6 +174,28 @@ class Crypt:
         # Update metrics
         self._metrics.record(subagent_type.value, result.success, task[:200])
         save_metrics(self._metrics, self._metrics_path)
+
+        # Evolve DNA traits (if DNA manager is wired)
+        if self._dna_manager:
+            type_stats = self._metrics.by_type.get(subagent_type.value, {})
+            total = type_stats.get("total", 1)
+            success_count = type_stats.get("success", 0)
+            success_rate = success_count / total if total > 0 else 0.5
+            avg_tool_calls = result.tool_calls
+            timeout_rate = 0.0
+            if result.error and "timeout" in (result.error or "").lower():
+                timeout_rate = 1.0
+            self._dna_manager.evolve(subagent_type, success_rate, avg_tool_calls, timeout_rate)
+
+        # Trigger dream synthesis if conditions met (background task)
+        if self._dream_synthesizer:
+            total_entombed = len(list(self.entombed_dir.glob("sub-*.json")))
+            if self._dream_synthesizer.should_dream(total_entombed):
+                try:
+                    import asyncio
+                    asyncio.create_task(self._dream_synthesizer.dream(self))
+                except RuntimeError:
+                    logger.debug("Could not schedule dream — no event loop")
 
         logger.info("Entombed %s: success=%s type=%s", sub_id, result.success, subagent_type.value)
 
