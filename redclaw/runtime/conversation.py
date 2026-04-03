@@ -86,6 +86,8 @@ class ConversationRuntime:
         subagent_spawner: Any | None = None,
         mode: str = "coder",
         assistant_context: str = "",
+        soul_text: str = "",
+        agi_context: str = "",
     ) -> None:
         self.client = client
         self.provider = provider
@@ -104,6 +106,8 @@ class ConversationRuntime:
         self.subagent_spawner = subagent_spawner
         self._mode = mode
         self._assistant_context = assistant_context
+        self._soul_text = soul_text
+        self._agi_context = agi_context
 
     @property
     def system_prompt(self) -> str:
@@ -117,6 +121,8 @@ class ConversationRuntime:
                 skills_guidance=hasattr(self.tools.specs, 'get') and 'skills_list' in self.tools.specs,
                 mode=self._mode,
                 assistant_context=self._assistant_context,
+                soul_text=self._soul_text,
+                agi_context=self._agi_context,
             )
         return self._system_prompt
 

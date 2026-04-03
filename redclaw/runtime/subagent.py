@@ -65,6 +65,7 @@ class SubagentSpawner:
         max_concurrent: int = 3,
         max_retries: int = 3,
         crypt: Crypt | None = None,
+        dna_manager: Any | None = None,
     ) -> None:
         self.client = client
         self.provider = provider
@@ -77,6 +78,7 @@ class SubagentSpawner:
         self.max_concurrent = max_concurrent
         self.max_retries = max_retries
         self.crypt = crypt
+        self._dna_manager = dna_manager
         self._depth = 0
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -209,6 +211,12 @@ class SubagentSpawner:
     ) -> SubagentResult:
         """Execute a subagent task with timeout."""
         effective_timeout = timeout or self.timeout
+
+        # Adjust timeout from DNA traits
+        if self._dna_manager:
+            modifiers = self._dna_manager.get_modifiers(subagent_type)
+            effective_timeout = max(30.0, min(180.0, effective_timeout * modifiers.timeout_multiplier))
+
         try:
             result = await asyncio.wait_for(
                 self._run_inner(task, working_dir, subagent_type),
@@ -255,6 +263,15 @@ class SubagentSpawner:
             if wisdom:
                 extra += f"\n\nBloodline wisdom from previous runs:\n{wisdom}"
 
+        # Inject DNA trait guidance
+        effective_max_turns = self.max_turns
+        if self._dna_manager:
+            guidance = self._dna_manager.get_prompt_guidance(subagent_type)
+            if guidance:
+                extra += f"\n\nBehavioral guidance: {guidance}"
+            modifiers = self._dna_manager.get_modifiers(subagent_type)
+            effective_max_turns = max(3, min(10, self.max_turns + modifiers.max_turns_modifier))
+
         system_prompt = build_system_prompt(
             working_dir=working_dir,
             extra_instructions=extra,
@@ -270,7 +287,7 @@ class SubagentSpawner:
             usage_tracker=UsageTracker(),
             working_dir=working_dir,
             system_prompt=system_prompt,
-            max_tool_rounds=self.max_turns,
+            max_tool_rounds=effective_max_turns,
         )
 
         self._depth += 1
