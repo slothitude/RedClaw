@@ -81,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     adv.add_argument("--subagent", action="store_true", help="Enable subagent delegation")
     adv.add_argument("--agi", action="store_true", help="Enable AGI mode (autonomous goals, soul, DNA traits)")
     adv.add_argument("--agi-interval", type=int, default=60, help="AGI executive loop interval in seconds (default: 60)")
+    adv.add_argument("--update", action="store_true", help="Force update RedClaw from GitHub (git pull + pip install)")
     adv.add_argument("--assistant", action="store_true", help="Enable personal assistant mode (Telegram)")
     adv.add_argument("--knowledge", action="store_true", help="Enable Cognee knowledge graph memory")
     adv.add_argument("--knowledge-dir", default=None, help="Knowledge graph data directory (default: ~/.redclaw/knowledge)")
@@ -586,7 +587,10 @@ def main() -> int | None:
     model = args.model or _default_model(args.provider)
 
     # Check for updates (exe only, silent if up-to-date)
-    from redclaw.updater import check_for_update
+    from redclaw.updater import check_for_update, force_update
+    if args.update:
+        force_update()
+        return 0
     check_for_update()
 
     # Show interactive mode chooser when --mode not explicitly passed
