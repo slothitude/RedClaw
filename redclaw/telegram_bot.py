@@ -788,6 +788,7 @@ class RedClawTelegramBot:
         async def _process() -> None:
             collected_text = ""
             tool_names: list[str] = []
+            created_files: list[str] = []
             status_msg = None
 
             async def on_text_delta(t: str) -> None:
@@ -807,7 +808,9 @@ class RedClawTelegramBot:
                     pass
 
             async def on_tool_result(tid: str, result: str, is_error: bool) -> None:
-                pass  # Don't spam tool results in chat
+                if not is_error and result.startswith("Wrote ") and " bytes to " in result:
+                    path = result.split(" bytes to ", 1)[1].strip()
+                    created_files.append(path)
 
             async def on_usage(u: Usage) -> None:
                 pass
@@ -846,6 +849,16 @@ class RedClawTelegramBot:
             if summary.error:
                 reply = f"Error: {summary.error}\n\n{reply}"
             await self._send_reply(update, reply)
+
+            # Auto-send files created by tools as Telegram documents
+            for fp in created_files:
+                try:
+                    p = Path(fp)
+                    if p.is_file():
+                        with open(p, "rb") as doc:
+                            await update.message.reply_document(document=doc, filename=p.name)
+                except Exception:
+                    pass
 
             # Update reaction to done
             try:
