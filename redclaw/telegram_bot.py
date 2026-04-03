@@ -64,12 +64,14 @@ class TelegramSession:
     def __init__(self, user_id: int, working_dir: str, provider_name: str,
                  model: str, base_url: str | None, perm_mode: str,
                  search_url: str | None = None, reader_url: str | None = None,
-                 mcp_servers: list[str] | None = None):
+                 mcp_servers: list[str] | None = None,
+                 assistant_mode: bool = False):
         self.user_id = user_id
         self.working_dir = working_dir
         self.provider_name = provider_name
         self.model = model
         self.mcp_servers = mcp_servers or []
+        self.assistant_mode = assistant_mode
 
         cwd = working_dir
         self.provider = get_provider(provider_name, base_url)
@@ -85,6 +87,45 @@ class TelegramSession:
         self.policy = PermissionPolicy(mode=PermissionMode(perm_mode))
         self.tracker = UsageTracker()
 
+        # Assistant stores (only created if assistant_mode)
+        self.tasks_store = None
+        self.notes_store = None
+        self.reminders_store = None
+
+        # Build assistant context for system prompt
+        assistant_context = ""
+        if assistant_mode:
+            from redclaw.assistant.tasks import TaskStore
+            from redclaw.assistant.notes import NoteStore
+            from redclaw.assistant.reminders import ReminderStore
+            from redclaw.assistant.config import AssistantConfig
+            from redclaw.tools.assistant_tools import set_stores
+            from datetime import datetime, timezone
+
+            self.tasks_store = TaskStore()
+            self.notes_store = NoteStore()
+            self.reminders_store = ReminderStore()
+            self.assistant_config = AssistantConfig.load()
+
+            # Share store instances with tool functions
+            set_stores(self.tasks_store, self.notes_store, self.reminders_store)
+
+            # Register assistant tools
+            self._register_assistant_tools()
+
+            # Build context
+            pending_tasks = len(self.tasks_store.list_tasks(status="pending"))
+            pending_reminders = len(self.reminders_store.get_pending())
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            assistant_context = (
+                f"Current time: {now}\n"
+                f"Pending tasks: {pending_tasks}\n"
+                f"Pending reminders: {pending_reminders}"
+            )
+            persona = self.assistant_config.persona_name
+            if persona:
+                assistant_context = f"Your name is {persona}.\n" + assistant_context
+
         self.rt = ConversationRuntime(
             client=self.client,
             provider=self.provider,
@@ -94,8 +135,125 @@ class TelegramSession:
             permission_policy=self.policy,
             usage_tracker=self.tracker,
             working_dir=cwd,
+            mode="assistant" if assistant_mode else "coder",
+            assistant_context=assistant_context,
         )
         self.current_task: asyncio.Task | None = None
+
+    def _register_assistant_tools(self) -> None:
+        """Register task, note, reminder, and knowledge graph tools."""
+        from redclaw.api.types import PermissionLevel
+        from redclaw.tools.registry import ToolSpec
+        from redclaw.tools.assistant_tools import execute_task, execute_note, execute_reminder
+        from redclaw.memory_graph.tools import execute_knowledge
+
+        self.tools.register_tool(ToolSpec(
+            name="task",
+            description="Manage tasks. Actions: add, list, update, delete, search. Use this to track to-dos and action items.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Action: add, list, update, delete, search", "default": "list"},
+                    "title": {"type": "string", "description": "Task title (for add/update)"},
+                    "task_id": {"type": "string", "description": "Task ID (for update/delete)"},
+                    "description": {"type": "string", "description": "Task description"},
+                    "priority": {"type": "string", "description": "Priority: low, medium, high, urgent", "default": "medium"},
+                    "due": {"type": "string", "description": "Due date (ISO 8601, e.g. 2025-01-15T09:00:00)"},
+                    "tags": {"type": "string", "description": "Comma-separated tags"},
+                    "status": {"type": "string", "description": "Status: pending, in_progress, done, cancelled"},
+                    "query": {"type": "string", "description": "Search query (for search) or tag filter (for list)"},
+                },
+                "required": [],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=execute_task,
+        ))
+        self.tools.register_tool(ToolSpec(
+            name="note",
+            description="Manage notes. Actions: add, list, update, delete, search. Use this to save information and knowledge.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Action: add, list, update, delete, search", "default": "list"},
+                    "title": {"type": "string", "description": "Note title (for add/update)"},
+                    "note_id": {"type": "string", "description": "Note ID (for update/delete)"},
+                    "content": {"type": "string", "description": "Note content (markdown)"},
+                    "tags": {"type": "string", "description": "Comma-separated tags"},
+                    "source": {"type": "string", "description": "Source of the note"},
+                    "query": {"type": "string", "description": "Search query (for search) or tag filter (for list)"},
+                },
+                "required": [],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=execute_note,
+        ))
+        self.tools.register_tool(ToolSpec(
+            name="reminder",
+            description="Manage reminders. Actions: add, list, delete. Use this to set time-based alerts.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Action: add, list, delete", "default": "list"},
+                    "text": {"type": "string", "description": "Reminder text (for add)"},
+                    "trigger_at": {"type": "string", "description": "Trigger time in ISO 8601 (e.g. 2025-01-15T09:00:00)"},
+                    "recurrence": {"type": "string", "description": "Recurrence: daily, weekly, monthly, weekdays, or empty"},
+                    "reminder_id": {"type": "string", "description": "Reminder ID (for delete)"},
+                },
+                "required": [],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=execute_reminder,
+        ))
+        self.tools.register_tool(ToolSpec(
+            name="knowledge",
+            description=(
+                "Knowledge graph memory powered by Cognee. Builds structured entity/relationship graphs from text. "
+                "Actions: add (ingest text), cognify (build graph), search (query graph), memify (enrich), "
+                "stats, list, delete, prune, visualize. "
+                "Use 'add' to ingest text, then 'cognify' to extract entities and build the graph, then 'search' to query."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": "Action: add, cognify, search, memify, stats, list, delete, prune, visualize",
+                        "default": "stats",
+                    },
+                    "data": {
+                        "type": "string",
+                        "description": "Data to ingest (text, file path, or URL) for 'add' action",
+                    },
+                    "dataset_name": {
+                        "type": "string",
+                        "description": "Named dataset to group data (default: redclaw_memory)",
+                        "default": "redclaw_memory",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Search query for 'search' action",
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "description": "Search strategy: GRAPH_COMPLETION (default), RAG_COMPLETION, CHUNKS, SUMMARIES, FEELING_LUCKY",
+                        "default": "GRAPH_COMPLETION",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Max results for search (default: 5)",
+                        "default": 5,
+                    },
+                    "run_in_background": {
+                        "type": "boolean",
+                        "description": "Run cognify in background for large datasets",
+                        "default": false,
+                    },
+                },
+                "required": [],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=execute_knowledge,
+        ))
 
     async def init_mcp(self) -> None:
         """Discover and register MCP tools, retrying failed servers."""
@@ -153,6 +311,7 @@ class RedClawTelegramBot:
         search_url: str | None = None,
         reader_url: str | None = None,
         mcp_servers: list[str] | None = None,
+        assistant_mode: bool = False,
     ):
         self.token = token
         self.allowed_user_id = allowed_user_id
@@ -164,7 +323,10 @@ class RedClawTelegramBot:
         self.search_url = search_url
         self.reader_url = reader_url
         self.mcp_servers = mcp_servers or []
+        self.assistant_mode = assistant_mode
         self.sessions: dict[int, TelegramSession] = {}
+        self._app: Any = None
+        self._schedulers: dict[int, Any] = {}
 
     def _get_session(self, user_id: int) -> TelegramSession:
         if user_id not in self.sessions:
@@ -178,9 +340,13 @@ class RedClawTelegramBot:
                 search_url=self.search_url,
                 reader_url=self.reader_url,
                 mcp_servers=self.mcp_servers,
+                assistant_mode=self.assistant_mode,
             )
             # Schedule MCP discovery in background
             asyncio.create_task(self.sessions[user_id].init_mcp())
+            # Start assistant scheduler if in assistant mode
+            if self.assistant_mode and self._app is not None:
+                self._start_scheduler(user_id)
         return self.sessions[user_id]
 
     def _check_user(self, update: Update) -> bool:
@@ -201,6 +367,21 @@ class RedClawTelegramBot:
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
             return
+        assistant_cmds = ""
+        if self.assistant_mode:
+            assistant_cmds = (
+                "\nAssistant:\n"
+                "/task <title> — Quick add task\n"
+                "/tasks — List pending tasks\n"
+                "/taskdone <id> — Mark task done\n"
+                "/note <title> — Quick add note\n"
+                "/notes — List recent notes\n"
+                "/remind <time> <text> — Set reminder\n"
+                "/reminders — List pending reminders\n"
+                "/briefing — Get daily briefing now\n"
+                "/knowledge [action] [args] — Knowledge graph memory\n"
+                "/config [key=val] — View/set assistant config\n"
+            )
         await self._send_reply(update, (
             "*RedClaw* — AI Coding Agent\n\n"
             "Send me a message and I'll process it with my coding tools.\n\n"
@@ -225,11 +406,27 @@ class RedClawTelegramBot:
             "/files — List uploaded files\n"
             "/status — Connection + agent status\n"
             "/restart — Restart bot (reloads MCP servers)"
+            + assistant_cmds
         ))
 
     async def cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
             return
+        assistant_cmds = ""
+        if self.assistant_mode:
+            assistant_cmds = (
+                "\nAssistant:\n"
+                "/task <title> — Quick add task\n"
+                "/tasks — List pending tasks\n"
+                "/taskdone <id> — Mark task done\n"
+                "/note <title> — Quick add note\n"
+                "/notes — List recent notes\n"
+                "/remind <time> <text> — Set reminder\n"
+                "/reminders — List pending reminders\n"
+                "/briefing — Get daily briefing now\n"
+                "/knowledge [action] [args] — Knowledge graph memory\n"
+                "/config [key=val] — View/set assistant config\n\n"
+            )
         await self._send_reply(update, (
             "RedClaw Commands:\n\n"
             "/start — Welcome + instructions\n"
@@ -252,7 +449,8 @@ class RedClawTelegramBot:
             "/run <cmd> — Run a bash command (bypasses LLM)\n"
             "/files — List uploaded files\n"
             "/status — Connection and agent status\n\n"
-            "Just type a message to chat with the agent.\n"
+            + assistant_cmds
+            + "Just type a message to chat with the agent.\n"
             "Send any file to upload it to the working directory."
         ))
 
@@ -716,11 +914,248 @@ class RedClawTelegramBot:
         except Exception as e:
             await self._send_reply(update, f"Error downloading file: {e}")
 
+    # ── Proactive messaging ──────────────────────────────────
+
+    async def send_proactive(self, user_id: int, text: str) -> None:
+        """Send a proactive message to a user via Telegram."""
+        if self._app is None:
+            return
+        try:
+            await self._app.bot.send_message(chat_id=user_id, text=text)
+        except Exception as e:
+            logger.error(f"Failed to send proactive message to {user_id}: {e}")
+
+    def _start_scheduler(self, user_id: int) -> None:
+        """Start the assistant scheduler for a user."""
+        s = self.sessions.get(user_id)
+        if not s or not s.assistant_mode:
+            return
+        if user_id in self._schedulers:
+            return
+        from redclaw.assistant.scheduler import AssistantScheduler
+        scheduler = AssistantScheduler(
+            config=s.assistant_config,
+            tasks=s.tasks_store,
+            reminders=s.reminders_store,
+            send_fn=self.send_proactive,
+            user_id=user_id,
+            search_url=self.search_url,
+        )
+        scheduler.start()
+        self._schedulers[user_id] = scheduler
+
+    # ── Assistant Commands ────────────────────────────────────
+
+    async def cmd_task(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        text = update.message.text or ""
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            await self._send_reply(update, "Usage: /task <title>")
+            return
+        s = self._get_session(update.effective_user.id)
+        task = s.tasks_store.add(title=parts[1].strip())
+        await self._send_reply(update, f"Task added: {task.id} — {task.title}")
+
+    async def cmd_tasks(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        tasks = s.tasks_store.list_tasks(status="pending")
+        if not tasks:
+            await self._send_reply(update, "No pending tasks.")
+            return
+        lines = []
+        for t in tasks:
+            marker = {"urgent": "!!!", "high": "!!", "medium": "!", "low": "-"}.get(t.priority, "!")
+            lines.append(f"{marker} {t.id} | {t.title}" + (f" (due {t.due})" if t.due else ""))
+        await self._send_reply(update, "Pending tasks:\n" + "\n".join(lines))
+
+    async def cmd_taskdone(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        text = update.message.text or ""
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            await self._send_reply(update, "Usage: /taskdone <id>")
+            return
+        s = self._get_session(update.effective_user.id)
+        result = s.tasks_store.update(parts[1].strip(), status="done")
+        if result:
+            await self._send_reply(update, f"Task done: {result.title}")
+        else:
+            await self._send_reply(update, f"Task '{parts[1].strip()}' not found.")
+
+    async def cmd_note(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        text = update.message.text or ""
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            await self._send_reply(update, "Usage: /note <title>")
+            return
+        s = self._get_session(update.effective_user.id)
+        note = s.notes_store.add(title=parts[1].strip())
+        await self._send_reply(update, f"Note added: {note.id} — {note.title}")
+
+    async def cmd_notes(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        notes = s.notes_store.list_notes(limit=10)
+        if not notes:
+            await self._send_reply(update, "No notes yet.")
+            return
+        lines = [f"- {n.id} | {n.title}" for n in notes]
+        await self._send_reply(update, "Recent notes:\n" + "\n".join(lines))
+
+    async def cmd_remind(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        text = update.message.text or ""
+        parts = text.split(maxsplit=2)
+        if len(parts) < 3:
+            await self._send_reply(update, "Usage: /remind <ISO datetime> <text>\nExample: /remind 2025-01-15T09:00 Call mom")
+            return
+        s = self._get_session(update.effective_user.id)
+        trigger_at = parts[1].strip()
+        reminder_text = parts[2].strip()
+        try:
+            reminder = s.reminders_store.add(text=reminder_text, trigger_at=trigger_at)
+            await self._send_reply(update, f"Reminder set: {reminder.id} — {reminder_text} at {trigger_at}")
+        except Exception as e:
+            await self._send_reply(update, f"Error: {e}")
+
+    async def cmd_reminders(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        pending = s.reminders_store.get_pending()
+        if not pending:
+            await self._send_reply(update, "No pending reminders.")
+            return
+        lines = [f"- {r.id} | {r.text} (at {r.trigger_at})" for r in pending]
+        await self._send_reply(update, "Pending reminders:\n" + "\n".join(lines))
+
+    async def cmd_briefing(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        if not s.assistant_mode:
+            await self._send_reply(update, "Assistant mode not enabled. Use --assistant flag.")
+            return
+        try:
+            from redclaw.assistant.briefing import BriefingGenerator
+            gen = BriefingGenerator(
+                config=s.assistant_config,
+                tasks=s.tasks_store,
+                reminders=s.reminders_store,
+                search_url=self.search_url,
+            )
+            briefing = await gen.generate()
+            await self._send_reply(update, briefing)
+        except Exception as e:
+            await self._send_reply(update, f"Briefing error: {e}")
+
+    async def cmd_config(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        if not s.assistant_mode:
+            await self._send_reply(update, "Assistant mode not enabled. Use --assistant flag.")
+            return
+        text = update.message.text or ""
+        parts = text.split(maxsplit=1)
+        if len(parts) > 1:
+            # Parse key=value pairs
+            assignment = parts[1].strip()
+            if "=" not in assignment:
+                await self._send_reply(update, "Usage: /config key=value\nKeys: timezone, briefing_time, briefing_enabled, weather_location, briefing_weather, briefing_news, briefing_tasks")
+                return
+            key, val = assignment.split("=", 1)
+            key = key.strip()
+            val = val.strip()
+            cfg = s.assistant_config
+            if key == "timezone":
+                cfg.timezone = val
+            elif key == "briefing_time":
+                cfg.briefing_time = val
+            elif key == "briefing_enabled":
+                cfg.briefing_enabled = val.lower() in ("true", "1", "yes")
+            elif key == "weather_location":
+                cfg.weather_location = val
+            elif key == "briefing_weather":
+                cfg.briefing_weather = val.lower() in ("true", "1", "yes")
+            elif key == "briefing_news":
+                cfg.briefing_news = val.lower() in ("true", "1", "yes")
+            elif key == "briefing_tasks":
+                cfg.briefing_tasks = val.lower() in ("true", "1", "yes")
+            else:
+                await self._send_reply(update, f"Unknown key: {key}")
+                return
+            cfg.save()
+            await self._send_reply(update, f"Config updated: {key}={val}")
+        else:
+            from dataclasses import asdict
+            cfg = s.assistant_config
+            data = {k: v for k, v in asdict(cfg).items() if k != "_path"}
+            lines = [f"{k}: {v}" for k, v in data.items()]
+            await self._send_reply(update, "Assistant config:\n" + "\n".join(lines))
+
+    async def cmd_knowledge(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        """Knowledge graph slash command: /knowledge <action> [args]."""
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        if not s.assistant_mode:
+            await self._send_reply(update, "Assistant mode not enabled. Use --assistant flag.")
+            return
+
+        from redclaw.memory_graph.tools import execute_knowledge
+
+        text = update.message.text or ""
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            result = await execute_knowledge(action="stats")
+            await self._send_reply(update, result)
+            return
+
+        arg = parts[1].strip()
+
+        # Quick shortcuts: /knowledge add <text>, /knowledge search <query>
+        if arg.startswith("add "):
+            data = arg[4:].strip()
+            result = await execute_knowledge(action="add", data=data)
+        elif arg.startswith("search "):
+            query = arg[7:].strip()
+            result = await execute_knowledge(action="search", query=query)
+        elif arg == "cognify":
+            result = await execute_knowledge(action="cognify")
+        elif arg == "memify":
+            result = await execute_knowledge(action="memify")
+        elif arg == "stats":
+            result = await execute_knowledge(action="stats")
+        elif arg == "list":
+            result = await execute_knowledge(action="list")
+        elif arg == "prune":
+            result = await execute_knowledge(action="prune")
+        elif arg.startswith("delete "):
+            ds = arg[7:].strip()
+            result = await execute_knowledge(action="delete", dataset_name=ds)
+        else:
+            result = (
+                "Usage: /knowledge <action> [args]\n"
+                "Actions: add <text>, cognify, search <query>, memify, stats, list, delete <dataset>, prune"
+            )
+        await self._send_reply(update, result)
+
     # ── Run ──────────────────────────────────────────────────
 
     async def run(self) -> None:
         """Build and run the Telegram bot."""
         app = Application.builder().token(self.token).build()
+        self._app = app
 
         # Register command handlers
         app.add_handler(CommandHandler("start", self.cmd_start))
@@ -745,6 +1180,18 @@ class RedClawTelegramBot:
         app.add_handler(CommandHandler("status", self.cmd_status))
         app.add_handler(CommandHandler("restart", self.cmd_restart))
 
+        # Assistant commands (always registered, only functional in assistant mode)
+        app.add_handler(CommandHandler("task", self.cmd_task))
+        app.add_handler(CommandHandler("tasks", self.cmd_tasks))
+        app.add_handler(CommandHandler("taskdone", self.cmd_taskdone))
+        app.add_handler(CommandHandler("note", self.cmd_note))
+        app.add_handler(CommandHandler("notes", self.cmd_notes))
+        app.add_handler(CommandHandler("remind", self.cmd_remind))
+        app.add_handler(CommandHandler("reminders", self.cmd_reminders))
+        app.add_handler(CommandHandler("briefing", self.cmd_briefing))
+        app.add_handler(CommandHandler("config", self.cmd_config))
+        app.add_handler(CommandHandler("knowledge", self.cmd_knowledge))
+
         # Message handlers
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text_message))
         app.add_handler(MessageHandler(
@@ -764,6 +1211,10 @@ class RedClawTelegramBot:
         except (KeyboardInterrupt, SystemExit):
             pass
         finally:
+            # Stop schedulers
+            for scheduler in self._schedulers.values():
+                scheduler.stop()
+            self._schedulers.clear()
             await app.updater.stop()
             await app.stop()
             await app.shutdown()
