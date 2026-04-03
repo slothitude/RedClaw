@@ -393,6 +393,33 @@ def _handle_slash_command(cmd: str, rt: ConversationRuntime, tracker: UsageTrack
     return False
 
 
+def _choose_mode() -> str | None:
+    """Show interactive mode chooser. Returns mode string or None to exit."""
+    from redclaw import __version__
+
+    console.print(f"\n[bold red]RedClaw[/] v{__version__} — Choose a mode:\n")
+    console.print("  [bold]1)[/] [cyan]REPL[/]         Interactive CLI coding agent")
+    console.print("  [bold]2)[/] [cyan]Dashboard[/]    Web config GUI + process launcher (port 9090)")
+    console.print("  [bold]3)[/] [cyan]WebChat[/]      Browser-based chat (port 8080)")
+    console.print("  [bold]4)[/] [cyan]Telegram[/]     Telegram bot")
+    console.print()
+    console.print("  [bold]0)[/] Exit")
+    console.print()
+
+    while True:
+        try:
+            choice = console.input("[bold green]> [/]").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+        modes = {"1": "repl", "2": "dashboard", "3": "webchat", "4": "telegram"}
+        if choice == "0" or choice.lower() in ("q", "quit", "exit"):
+            return None
+        if choice in modes:
+            return modes[choice]
+        console.print("[yellow]Invalid choice. Enter 0-4.[/]")
+
+
 def main() -> int | None:
     """CLI entry point."""
     parser = build_parser()
@@ -404,6 +431,13 @@ def main() -> int | None:
     )
 
     model = args.model or _default_model(args.provider)
+
+    # Show interactive mode chooser when --mode not explicitly passed
+    if "--mode" not in sys.argv:
+        mode = _choose_mode()
+        if mode is None:
+            return 0
+        args.mode = mode
 
     if args.mode == "rpc":
         from redclaw.rpc import run_rpc
