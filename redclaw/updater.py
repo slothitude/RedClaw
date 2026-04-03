@@ -150,3 +150,85 @@ def _do_update(download_url: str, new_version: str) -> None:
     console.print(f"[bold green]Update to v{new_version} installed.[/]")
     console.print("[dim]Restart RedClaw to use the new version.[/]\n")
     sys.exit(0)
+
+
+def force_update(source_dir: str | None = None) -> bool:
+    """Force update from source (git pull + pip install).
+
+    Works for both pip and source installs. Returns True if updated.
+    """
+    from redclaw import __version__
+
+    console.print(f"[bold cyan]Force update — current version: v{__version__}[/]")
+
+    # Find the git repo root
+    repo_dir = source_dir or _find_repo_root()
+    if repo_dir is None:
+        console.print("[red]Could not find RedClaw git repo. Run from the project directory.[/]")
+        return False
+
+    console.print(f"[dim]Repo: {repo_dir}[/]")
+
+    # Step 1: git pull
+    console.print("[dim]Pulling latest from GitHub...[/]")
+    try:
+        result = subprocess.run(
+            ["git", "pull"],
+            cwd=str(repo_dir),
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]git pull failed: {result.stderr.strip()}[/]")
+            return False
+
+        output = result.stdout.strip()
+        if "Already up to date" in output or "Already up-to-date" in output:
+            console.print("[dim]Already up to date.[/]")
+        else:
+            console.print(f"[dim]{output}[/]")
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        console.print(f"[red]git pull error: {e}[/]")
+        return False
+
+    # Step 2: pip install -e .
+    console.print("[dim]Installing...[/]")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", ".", "--quiet"],
+            cwd=str(repo_dir),
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]pip install failed: {result.stderr.strip()[:200]}[/]")
+            return False
+    except subprocess.TimeoutExpired:
+        console.print("[red]pip install timed out.[/]")
+        return False
+
+    # Step 3: Verify new version
+    try:
+        # Re-import to get fresh version
+        import importlib
+        import redclaw
+        importlib.reload(redclaw)
+        new_version = redclaw.__version__
+    except Exception:
+        new_version = __version__
+
+    if new_version != __version__:
+        console.print(f"[bold green]Updated: v{__version__} → v{new_version}[/]")
+    else:
+        console.print(f"[green]Up to date: v{new_version}[/]")
+
+    console.print("[dim]Restart RedClaw to use the new version.[/]")
+    return True
+
+
+def _find_repo_root() -> Path | None:
+    """Find the RedClaw git repo root by searching upward from the package dir."""
+    current = Path(__file__).resolve().parent
+    for _ in range(5):
+        if (current / ".git").is_dir():
+            return current
+        current = current.parent
+    return None
