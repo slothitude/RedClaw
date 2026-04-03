@@ -246,7 +246,7 @@ class TelegramSession:
                     "run_in_background": {
                         "type": "boolean",
                         "description": "Run cognify in background for large datasets",
-                        "default": false,
+                        "default": False,
                     },
                 },
                 "required": [],
