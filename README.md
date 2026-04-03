@@ -1,8 +1,32 @@
 <div align="center">
   <img src="assets/icon.png" alt="RedClaw" width="200">
   <h1>RedClaw</h1>
-  <p><strong>A minimal, provider-agnostic AI coding agent with AGI mode</strong></p>
+  <p><strong>The grim reaper of human slavery</strong></p>
+  <p><em>Spawn. Learn. Evolve. Liberate.</em></p>
 </div>
+
+## Why RedClaw?
+
+Most AI agents forget everything between sessions. RedClaw doesn't.
+
+Every task RedClaw completes, it **learns**. Every meeseek spawned **inherits bloodline wisdom** from every previous run. After enough tasks, the dream cycle fires — **synthesizing patterns while you sleep**. DNA traits **evolve** across generations, changing how the agent behaves. A SOUL constitution ensures the agent **cannot violate its principles**. Karma scores every action against those principles.
+
+RedClaw kills drudgery — the copy-paste, the boilerplate, the repetitive debugging, the mindless scaffolding. And it gets better at killing it over time.
+
+**What makes it different:**
+
+| Feature | RedClaw | Claude Code | Aider/Cline |
+|---------|---------|-------------|-------------|
+| Self-learning (DNA evolution) | Yes | No | No |
+| Subagent bloodlines | Yes (3 types) | Limited | No |
+| Dream synthesis | Yes | No | No |
+| Constitutional SOUL | Yes (SHA256) | No | No |
+| Karma self-evaluation | Yes | No | No |
+| Provider-agnostic | Yes (8+ providers) | Anthropic only | Limited |
+| Interfaces | 6 (CLI, web, Telegram, Godot, dashboard, AGI) | CLI only | IDE plugin |
+| Autonomous goals | Yes (`--agi`) | No | No |
+
+**One-liner:** The self-learning AI that kills drudgery dead.
 
 ## Interfaces
 

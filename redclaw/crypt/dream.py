@@ -189,18 +189,23 @@ class DreamSynthesizer:
             "=== GENERAL ===\n<bullets>\n"
         )
 
-        # LLM call
+        # LLM call — collect streamed text
         try:
-            from redclaw.api.types import InputMessage, MessageRequest, Role
+            from redclaw.api.types import InputMessage, MessageRequest, Role, TextBlock
             request = MessageRequest(
                 model=self.model,
-                messages=[InputMessage(role=Role.USER, content=prompt)],
+                messages=[InputMessage(role=Role.USER, content=[TextBlock(text=prompt)])],
                 system="You are a wisdom synthesis engine. Be concise and insightful.",
                 max_tokens=2048,
-                stream=False,
             )
-            response = await self.client.send_message(request)
-            synthesis = response.text if hasattr(response, "text") else str(response)
+            parts: list[str] = []
+            async for event in self.client.stream_message(request):
+                if event.text_delta:
+                    parts.append(event.text_delta)
+            synthesis = "".join(parts)
+            if not synthesis:
+                logger.warning("Dream: LLM returned empty synthesis")
+                return result
         except Exception as e:
             logger.error("Dream LLM call failed: %s", e)
             return result

@@ -62,11 +62,24 @@ class Crypt:
         return ""
 
     def update_bloodline(self, subagent_type: SubagentType, lesson: str, category: str) -> None:
-        """Append a lesson to the bloodline file under the given category."""
+        """Append a lesson to the bloodline file under the given category.
+
+        Deduplicates against existing lessons — skips if an identical or
+        very similar lesson already exists.
+        """
         path = self.bloodlines_dir / f"{subagent_type.value}.md"
         content = ""
         if path.is_file():
             content = path.read_text(encoding="utf-8")
+
+        # Dedup: check if this lesson (or a near-duplicate) already exists
+        lesson_lower = lesson.lower().strip()
+        existing_lines = content.split("\n")
+        for line in existing_lines:
+            stripped = line.lstrip("- *").strip().lower()
+            if stripped and (stripped == lesson_lower or stripped in lesson_lower or lesson_lower in stripped):
+                logger.debug("Skipping duplicate lesson: %s", lesson[:80])
+                return
 
         header = f"## {category}"
         lines = content.split("\n")
@@ -193,9 +206,15 @@ class Crypt:
             if self._dream_synthesizer.should_dream(total_entombed):
                 try:
                     import asyncio
-                    asyncio.create_task(self._dream_synthesizer.dream(self))
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self._dream_synthesizer.dream(self))
                 except RuntimeError:
-                    logger.debug("Could not schedule dream — no event loop")
+                    # No running loop — try to run synchronously in a new one
+                    logger.info("No running event loop, running dream synchronously")
+                    try:
+                        asyncio.run(self._dream_synthesizer.dream(self))
+                    except Exception as e:
+                        logger.warning("Synchronous dream failed: %s", e)
 
         logger.info("Entombed %s: success=%s type=%s", sub_id, result.success, subagent_type.value)
 
