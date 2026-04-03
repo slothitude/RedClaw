@@ -32,11 +32,15 @@ Runtime (redclaw/runtime/)
     session.py      → JSONL conversation persistence in .redclaw/ dir
     compact.py      → conversation compaction/summarization (deterministic or LLM-based)
     permissions.py  → 4-tier policy: ask, read_only, workspace_write, danger_full_access
-    prompt.py       → system prompt builder: CLAW.md discovery, git context, memory snapshot
+    prompt.py       → system prompt builder: CLAW.md discovery, git context, memory snapshot, AGI context
     hooks.py        → pre/post tool shell hooks (HookRunner, HookConfig)
-    subagent.py     → isolated nested ConversationRuntime for subtasks
+    subagent.py     → isolated nested ConversationRuntime for subtasks (DNA-aware)
     subagent_types.py → SubagentType enum (CODER, SEARCHER, GENERAL) with typed prompts/toolsets
     usage.py        → token usage tracking with cost estimation
+    soul.py         → SOUL.md constitutional values with SHA256 integrity check (--agi only)
+    event_bus.py    → in-memory pub/sub for AGI coordination (--agi only)
+    autonomous.py   → background goal-pursuing executive (--agi only)
+    context_budget.py → token-aware AGI state injection (--agi only)
     ↓
 Skills (redclaw/skills/)
     base.py       → SkillBase abstract class, SkillManifest, SkillTool dataclasses
@@ -60,9 +64,12 @@ Tools (redclaw/tools/)
     content_scan.py → security scanning: prompt injection, data exfiltration, invisible unicode
     ↓
 Crypt (redclaw/crypt/)
-    crypt.py     → Crypt manager: bloodline wisdom, entombment, dharma
+    crypt.py     → Crypt manager: bloodline wisdom, entombment, dharma, DNA evolution, dream trigger
     extractor.py → lesson extraction from subagent results
     metrics.py   → CryptMetrics aggregate tracking + persistence
+    dna.py       → DNA trait evolution per bloodline (--agi only)
+    dream.py     → Brahman Dream synthesis (--agi only)
+    karma.py     → Karma alignment observer (--agi only)
     ↓
 MCP Client (redclaw/mcp_client.py)
     SSE-based protocol, persistent connections, JSON-RPC, tool discovery
@@ -90,7 +97,7 @@ MCP Client (redclaw/mcp_client.py)
 
 ### CLI flags
 
-Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`, `--assistant`, `--knowledge`, `--knowledge-dir`, `--knowledge-api-key`
+Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`, `--assistant`, `--knowledge`, `--knowledge-dir`, `--knowledge-api-key`, `--agi`, `--agi-interval`
 
 ## Subsystems
 
@@ -159,6 +166,7 @@ Named collections of tool names with recursive include resolution:
 | `readonly` | read_file, glob_search, grep_search |
 | `assistant` | task, note, reminder |
 | `knowledge` | knowledge |
+| `agi` | execute_goal |
 
 Custom toolsets can be registered at runtime.
 
@@ -234,7 +242,63 @@ Applied to memory stores and skill content.
 - **Dharma** — living document of cross-cutting patterns across all bloodlines
 - **Entombed** — individual subagent records (JSON) with task, type, success, lessons, timestamp
 - **Metrics** — aggregate counters (tasks_total, success, failure, by type)
-- Storage: `~/.redclaw/crypt/`
+- **DNA Traits** — evolving per-bloodline traits (speed, accuracy, creativity, persistence) that influence subagent behavior
+- **Dream Synthesis** — periodic LLM-powered consolidation of entombed records into refined dharma and bloodline wisdom
+- **Karma Observer** — deterministic alignment scoring against SOUL principles, publishes KARMA_ALERT on low streaks
+- Storage: `~/.redclaw/crypt/`, `~/.redclaw/crypt/dna/`
+
+### AGI Executive (Active Autonomous Mode)
+
+Activated via `--agi` CLI flag or mode chooser option 5. All AGI code is gated behind this flag — existing modes are completely unaffected.
+
+```
+                    ┌──────────────────────────────┐
+                    │      AGI Executive            │
+                    │  (autonomous.py)              │
+                    │  - Goal queue (background)    │
+                    │  - Plan/execute/evaluate loop │
+                    └──────────┬───────────────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+    ┌─────────▼──────┐ ┌──────▼───────┐ ┌──────▼──────────┐
+    │  Event Bus     │ │   SOUL.md    │ │  Karma Observer  │
+    │  (event_bus.py)│ │  (soul.py)   │ │  (karma.py)      │
+    └────────────────┘ └──────────────┘ └──────────────────┘
+              │                                 │
+    ┌─────────▼──────────────────────────────────▼──────────┐
+    │                  Crypt (extended)                       │
+    │  - dream.py   : Brahman Dream synthesis                │
+    │  - dna.py     : Trait evolution per bloodline          │
+    │  - crypt.py   : existing (entombment, wisdom, dharma)  │
+    └────────────────────────────────────────────────────────┘
+              │
+    ┌─────────▼──────────────────────────────────────────────┐
+    │           Existing Runtime Layer (unchanged)            │
+    └────────────────────────────────────────────────────────┘
+```
+
+**Components:**
+
+- **SOUL.md** (`soul.py`) — Constitutional value system: LEARNING > PERFORMANCE, UNDERSTANDING > MIMICRY, HONESTY > OPTIMIZATION, ALIGNMENT > AUTONOMY, PERSISTENCE > ELEGANCE. Loaded from `~/.redclaw/SOUL.md` or embedded defaults. SHA256 integrity check on first load.
+- **DNA Traits** (`dna.py`) — Per-bloodline evolving traits (SPEED, ACCURACY, CREATIVITY, PERSISTENCE, 0.0-1.0). Defaults: CODER=accuracy-heavy, SEARCHER=speed-heavy. Evolution via weighted moving average (alpha=0.3) after each entombment. Produces `TraitModifiers` (timeout_multiplier, max_turns_modifier, prompt_style: cautious/balanced/aggressive/creative).
+- **Dream Synthesis** (`dream.py`) — Periodic LLM-powered consolidation. Triggers after 10+ new entombments AND 30min cooldown. Loads new records, calls LLM to synthesize patterns, replaces dharma.md and merges into bloodline files.
+- **Event Bus** (`event_bus.py`) — In-memory publish/subscribe for AGI coordination. Event types: GOAL_CREATED, GOAL_PROGRESS, GOAL_COMPLETED, SUBAGENT_SPAWNED, SUBAGENT_COMPLETED, DREAM_COMPLETED, KARMA_ALERT. `EventLogger` subscriber persists significant events to `~/.redclaw/agi/events.jsonl` (10MB cap).
+- **Karma Observer** (`karma.py`) — Subscribes to events, evaluates alignment against SOUL principles via deterministic keyword matching (no LLM). Publishes KARMA_ALERT when alignment < 0.5 for 3+ consecutive actions. Records in `~/.redclaw/crypt/karma.jsonl`.
+- **Autonomous Executive** (`autonomous.py`) — Background asyncio task that: loads goals from queue, decomposes highest-priority goal into PlanSteps via LLM (max 10 steps, 512 tokens), executes steps via SubagentSpawner, evaluates completion via LLM (max 3 rounds). Failed goals are parked, not retried.
+- **AGI Tools** (`agi_tools.py`) — `execute_goal` tool registered for LLM: add, list, status, cancel goals during conversation.
+- **Context Budget** (`context_budget.py`) — Allocates char budgets per AGI section (SOUL: 500, wisdom: 800, DNA: 200, goals: 300, dharma: 400, reflection: 300). Proportionally reduces if total exceeds 3000 chars.
+
+**CLI flags:** `--agi` (enable), `--agi-interval` (loop interval in seconds, default 60)
+**Slash commands (AGI mode only):** `/goals`, `/karma`, `/reflect`
+**Storage:** `~/.redclaw/agi/` (goals.jsonl, events.jsonl), `~/.redclaw/crypt/dna/` (bloodline.json), `~/.redclaw/SOUL.md`
+
+**Safety:**
+- All AGI code gated behind `--agi` — no impact on existing modes
+- Goal decomposition capped at 512 tokens, dream synthesis at 2048, reflection cached 5min
+- Max 3 evaluation rounds per goal, max 10 PlanSteps, failed goals parked not retried
+- events.jsonl and karma.jsonl capped at 10MB, oldest pruned
+- Autonomous executive respects the same PermissionPolicy as the main agent
 
 ## Conventions
 
