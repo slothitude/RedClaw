@@ -165,7 +165,8 @@ class DreamSynthesizer:
 
         # Build synthesis prompt
         records_summary = "\n".join(
-            f"- [{r.get('type', '?')}] {'OK' if r.get('success') else 'FAIL'}: "
+            f"- [{r.get('type', '?')}] {'OK' if r.get('success') else 'FAIL'} "
+            f"({r.get('tool_calls', 0)} calls): "
             f"{r.get('task', '')[:100]}"
             for r in records[:50]
         )
@@ -174,7 +175,10 @@ class DreamSynthesizer:
             "Analyze these subagent records and current wisdom. Produce:\n"
             "1. REFINED DHARMA: A concise synthesis of cross-cutting patterns (max 400 words). "
             "Replace the existing dharma entirely.\n"
-            "2. BLOODLINE UPDATES: For each bloodline, list 3-5 key insights as bullet points.\n\n"
+            "2. BLOODLINE UPDATES: For each bloodline, list 3-5 key insights as bullet points.\n"
+            "3. EFFICIENCY PATTERNS: Compare tool call counts between successes and failures. "
+            "Identify what execution strategies (e.g., read->edit vs bash brute force) correlate with success. "
+            "Include these as bullet points in the relevant bloodline.\n\n"
             f"Records ({len(records)}):\n{records_summary}\n\n"
             f"Current dharma:\n{dharma[:1000]}\n\n"
         )
@@ -184,6 +188,7 @@ class DreamSynthesizer:
         prompt += (
             "Output format:\n"
             "=== DHARMA ===\n<refined dharma>\n"
+            "=== EFFICIENCY ===\n<tool-efficiency patterns across successes vs failures>\n"
             "=== CODER ===\n<bullets>\n"
             "=== SEARCHER ===\n<bullets>\n"
             "=== GENERAL ===\n<bullets>\n"
