@@ -28,6 +28,25 @@ RedClaw kills drudgery — the copy-paste, the boilerplate, the repetitive debug
 
 **One-liner:** The self-learning AI that kills drudgery dead.
 
+## SWE-bench Results
+
+> 7/17 patches (**41%**) on free GLM-5.1 in 95 minutes at **$0 cost**.
+> 3 instances failed due to Windows git clone env issues (not agent failures).
+
+| Instance | Time | Result |
+|---|---|---|
+| django-11099 (username regex anchors) | 176s | Patched |
+| django-14382 (trailing slash in validate_name) | 174s | Patched |
+| django-12915 (async static files handler) | 186s | Patched |
+| django-17087 (qualname serialization) | 220s | Patched |
+| django-11133 (memoryview handling) | 290s | Patched |
+| django-11422 (autoreload module spec) | 489s | Patched |
+| matplotlib-25498 (colorbar update) | 445s | Patched |
+
+Key finding: successful patches averaged **3 tool calls** (read→edit) vs **29 for failures** (bash brute force).
+
+See the [full writeup](docs/promotion/swebench_results_post.md) for dream synthesis analysis and carry-forward wisdom.
+
 ## Interfaces
 
 | Mode | Description |

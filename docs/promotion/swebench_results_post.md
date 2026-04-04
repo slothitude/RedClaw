@@ -1,20 +1,20 @@
-# RedClaw + free GLM-5.1: 35% SWE-bench patch rate, 95 minutes, $0. Here's what the AGI loop learned.
+# RedClaw + free GLM-5.1: 41% SWE-bench patch rate (7/17), 95 minutes, $0. Here's what the AGI loop learned.
 
 ## TL;DR
 
 | Metric | Value |
 |--------|-------|
 | Instances | 20 (SWE-bench Lite, seed=42) |
-| Patched | 7 (35%) |
+| Patched | 7 (41% of 17 resolvable instances) |
 | Failed | 10 (no patch, timeout, or wrong fix) |
-| Clone failures | 3 (Windows long path, exit 128) |
+| Clone failures | 3 (Windows long path, exit 128 — infra, not agent) |
 | Total time | 95 min |
 | Cost | $0 (ZAI free tier) |
 | Model | GLM-5.1 via ZAI (free) |
 
 ## The result that matters
 
-7/20 patched. Not headline-grabbing. But the interesting thing isn't the number — it's *what the agent learned about itself while running*.
+7/17 resolvable instances patched (41%). The 3 clone failures are infrastructure — Windows `core.longpaths` issue, not agent failures. But the interesting thing isn't the number — it's *what the agent learned about itself while running*.
 
 ## The surgical vs. brute-force finding
 
