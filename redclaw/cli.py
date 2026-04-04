@@ -93,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
     mcp.add_argument("--tts-url", default=None, help="TTS MCP server URL")
     mcp.add_argument("--stt-url", default=None, help="STT MCP server URL")
 
+    # Local model / Token saver
+    lm = p.add_argument_group("Local Model")
+    lm.add_argument("--local-model", type=Path, default=None, help="Path to local BitNet GGUF model for token-free inference")
+    lm.add_argument("--bitnet-bin", type=Path, default=None, help="Path to bitnet.cpp binary (llama-cli)")
+    lm.add_argument("--token-saver", action="store_true", help="Enable token-saving via local model predictions")
+
     # Web search
     p.add_argument("--search-url", default="http://localhost:8888", help="SearXNG instance URL")
     p.add_argument("--reader-url", default="http://localhost:8003/sse", help="Web Reader API URL")
@@ -130,6 +136,9 @@ async def _run_repl(
     enable_subagent: bool = False,
     agi_mode: bool = False,
     agi_interval: int = 60,
+    local_model: Path | None = None,
+    bitnet_bin: Path | None = None,
+    token_saver_flag: bool = False,
 ) -> None:
     """Run the interactive REPL."""
     cwd = working_dir or str(Path.cwd())
@@ -183,6 +192,16 @@ async def _run_repl(
             },
             permission=PermissionLevel.WORKSPACE_WRITE,
             execute=lambda **kw: execute_memory(memory_dir=memory_dir, **kw),
+        ))
+
+    # Token saver / Local model
+    token_saver = None
+    if token_saver_flag or local_model:
+        from redclaw.runtime.token_saver import TokenSaver, TokenSaverConfig
+        token_saver = TokenSaver(TokenSaverConfig(
+            model_path=local_model,
+            bitnet_bin=bitnet_bin,
+            enabled=True,
         ))
 
     # Subagent system
@@ -285,6 +304,7 @@ async def _run_repl(
         subagent_spawner=subagent_spawner,
         soul_text=soul_text,
         agi_context=agi_context,
+        token_saver=token_saver,
     )
 
     console.print(f"[bold red]RedClaw[/] {provider_name}/{model}")
@@ -662,6 +682,9 @@ def main() -> int | None:
             enable_subagent=args.subagent,
             agi_mode=True,
             agi_interval=args.agi_interval,
+            local_model=args.local_model,
+            bitnet_bin=args.bitnet_bin,
+            token_saver_flag=args.token_saver,
         ))
     else:
         asyncio.run(_run_repl(
@@ -679,6 +702,9 @@ def main() -> int | None:
             memory_dir=args.memory_dir,
             compact_llm=args.compact_llm,
             enable_subagent=args.subagent,
+            local_model=args.local_model,
+            bitnet_bin=args.bitnet_bin,
+            token_saver_flag=args.token_saver,
         ))
 
     return 0

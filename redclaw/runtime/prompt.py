@@ -16,6 +16,7 @@ def build_system_prompt(
     assistant_context: str = "",
     soul_text: str = "",
     agi_context: str = "",
+    local_model_active: bool = False,
 ) -> str:
     """Build the system prompt with context."""
     cwd = working_dir or str(Path.cwd())
@@ -105,7 +106,7 @@ def build_system_prompt(
             parts.append(experience)
 
     # Tool usage guidelines
-    parts.append(
+    guidelines = (
         "\nGuidelines:\n"
         "- Read files before editing them.\n"
         "- Use glob_search to find files by name pattern.\n"
@@ -114,6 +115,9 @@ def build_system_prompt(
         "- Run bash commands for git, tests, builds, and other operations.\n"
         "- Be concise. Explain your changes briefly.\n"
     )
+    if local_model_active:
+        guidelines += "- A local BitNet model is running for token-free tool predictions.\n"
+    parts.append(guidelines)
 
     return "\n".join(parts)
 
