@@ -1337,6 +1337,47 @@ class RedClawTelegramBot:
 
         logger.info("RedClaw Telegram bot starting...")
         await app.initialize()
+
+        # Register bot commands for Telegram menu
+        from telegram import BotCommand
+        commands = [
+            BotCommand("start", "Start / show welcome"),
+            BotCommand("help", "Show all commands"),
+            BotCommand("usage", "Token usage stats"),
+            BotCommand("new", "New conversation session"),
+            BotCommand("clear", "Clear conversation history"),
+            BotCommand("compact", "Compact conversation context"),
+            BotCommand("session", "Show session info"),
+            BotCommand("model", "Get or set model"),
+            BotCommand("provider", "Get or set provider"),
+            BotCommand("perms", "Get or set permission mode"),
+            BotCommand("memory", "Search memories"),
+            BotCommand("skills", "List skills"),
+            BotCommand("crypt", "Crypt wisdom stats"),
+            BotCommand("abort", "Abort current response"),
+            BotCommand("get", "Download a file"),
+            BotCommand("getzip", "Download folder as zip"),
+            BotCommand("ls", "List working directory"),
+            BotCommand("run", "Run a shell command"),
+            BotCommand("files", "Search files by pattern"),
+            BotCommand("status", "Bot status & uptime"),
+            BotCommand("restart", "Restart the bot"),
+            BotCommand("task", "Create a task"),
+            BotCommand("tasks", "List tasks"),
+            BotCommand("taskdone", "Mark task done"),
+            BotCommand("note", "Create a note"),
+            BotCommand("notes", "List notes"),
+            BotCommand("remind", "Set a reminder"),
+            BotCommand("reminders", "List reminders"),
+            BotCommand("briefing", "Get daily briefing"),
+            BotCommand("config", "Assistant config"),
+            BotCommand("knowledge", "Knowledge graph search"),
+        ]
+        try:
+            await app.bot.set_my_commands(commands)
+        except Exception as e:
+            logger.warning("Failed to set bot commands: %s", e)
+
         await app.start()
         await app.updater.start_polling()
 
