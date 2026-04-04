@@ -12,10 +12,12 @@ RedClaw is a minimal AI coding agent with multiple interfaces (CLI REPL, Godot 4
 pip install -e .              # Install
 pip install -e ".[dev]"       # Install with dev deps (pytest, pytest-asyncio)
 python -m redclaw             # Run CLI REPL
-pytest                        # Run tests
+pytest                        # Run tests (no test suite yet)
+pytest tests/test_foo.py      # Run a single test file
+pytest -x                     # Run tests, stop on first failure
 ```
 
-No linter or formatter is configured.
+No linter or formatter is configured. CI runs `pytest --tb=short` on Python 3.11 via GitHub Actions (`.github/workflows/ci.yml`).
 
 ## Architecture
 
@@ -316,4 +318,6 @@ Activated via `--agi` CLI flag or mode chooser option 5. All AGI code is gated b
 - `logging` module throughout — no print statements in library code
 - Tools return string results; errors surfaced via `is_error=True` in `ToolResultBlock`
 - Atomic writes via tempfile + os.replace for all persistent file operations
+- Version is maintained in both `redclaw/__init__.py` (`__version__`) and `pyproject.toml` (`version`) — keep in sync
 - The Godot GUI project lives in `godot/` with GDScript in `godot/scripts/` and `godot/ui/`
+- Docker: multi-stage `Dockerfile` + `docker-compose.yml` for containerized deployment
