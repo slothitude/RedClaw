@@ -114,7 +114,7 @@ class TelegramSession:
             self._register_assistant_tools()
 
             # AGI subsystem — project-managing meeseek subagents
-            self._init_agi(client, provider, model)
+            self._init_agi(self.client, self.provider, self.model)
 
             # Build context
             pending_tasks = len(self.tasks_store.list_tasks(status="pending"))

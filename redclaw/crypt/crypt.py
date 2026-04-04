@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class Crypt:
     """Manages bloodline wisdom, entombment, and dharma."""
 
-    def __init__(self, crypt_dir: Path | None = None, dna_manager: Any | None = None, dream_synthesizer: Any | None = None) -> None:
+    def __init__(self, crypt_dir: Path | None = None, dna_manager: Any | None = None, dream_synthesizer: Any | None = None, self_learner: Any | None = None) -> None:
         self.crypt_dir = crypt_dir or Path.home() / ".redclaw" / "crypt"
         self.crypt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -47,6 +47,9 @@ class Crypt:
 
         # Dream synthesizer (optional — triggered after entombment)
         self._dream_synthesizer = dream_synthesizer
+
+        # Self-learner (optional — retrains predictors from accumulated data)
+        self._self_learner = self_learner
 
     @property
     def metrics(self) -> CryptMetrics:
@@ -215,6 +218,17 @@ class Crypt:
                         asyncio.run(self._dream_synthesizer.dream(self))
                     except Exception as e:
                         logger.warning("Synchronous dream failed: %s", e)
+
+        # Trigger self-learner retrain if threshold met
+        if self._self_learner:
+            total_entombed = len(list(self.entombed_dir.glob("sub-*.json")))
+            if self._self_learner.should_retrain(total_entombed):
+                try:
+                    result = self._self_learner.retrain(self)
+                    if result.success:
+                        logger.info("Self-learner retrained %s: %s", result.model_type, result.message)
+                except Exception as e:
+                    logger.warning("Self-learner retrain failed: %s", e)
 
         logger.info("Entombed %s: success=%s type=%s", sub_id, result.success, subagent_type.value)
 

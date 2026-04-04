@@ -88,6 +88,7 @@ class ConversationRuntime:
         assistant_context: str = "",
         soul_text: str = "",
         agi_context: str = "",
+        token_saver: Any | None = None,
     ) -> None:
         self.client = client
         self.provider = provider
@@ -108,6 +109,7 @@ class ConversationRuntime:
         self._assistant_context = assistant_context
         self._soul_text = soul_text
         self._agi_context = agi_context
+        self._token_saver = token_saver
 
     @property
     def system_prompt(self) -> str:
@@ -255,6 +257,10 @@ class ConversationRuntime:
             for tc in tool_calls:
                 if self._abort:
                     break
+
+                # Record tool call for token saver
+                if self._token_saver:
+                    self._token_saver.record_tool_call(tc.name)
 
                 # Check permissions
                 spec = self.tools.specs.get(tc.name)
