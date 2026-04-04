@@ -121,6 +121,39 @@ def load_instances(dataset: str, instance_ids: list[str] | None = None, sample: 
     return instances
 
 
+def _inject_counterfactual(
+    agi_context: dict,
+    instance_id: str,
+    success: bool,
+    tool_calls: int,
+) -> None:
+    """Inject counterfactual reasoning — compare success vs failure patterns."""
+    if not success and tool_calls > 15:
+        return  # Can't learn much from excessive tool calls
+    if not agi_context:
+        return
+    try:
+        from redclaw.runtime.subagent_types import SubagentType
+
+        # Load recent successful instances for comparison
+        results = json.load(open("swebench_results.json")) if Path("swebench_results.json").exists() else []
+        successes = [r for r in results if r.get("has_patch")]
+        if not successes:
+            return
+
+        avg_success_tools = sum(r["tool_calls"] for r in successes if "tool_calls" > 0) / len(successes)
+        lesson = (
+            f"Counterfactual: {instance_id} used {tool_calls} tool calls (failed). "
+            f"Recent successes averaged {avg_success_tools:.0f} calls — "
+            f"fewer, more targeted tool usage correlates to better outcomes."
+        )
+        agi_context["crypt"].append_bloodline_lesson(
+            SubagentType.CODER, lesson, "Tool Insights",
+        )
+    except Exception as e:
+        logger.debug("Counterfactual injection failed: %s", e)
+
+
 def checkout_repo(instance: dict, workdir: str) -> str:
     """Clone the repo and checkout the base commit."""
     repo = instance["repo"]
@@ -132,6 +165,14 @@ def checkout_repo(instance: dict, workdir: str) -> str:
 
     logger.info("Cloning %s @ %s", repo, base_commit[:8])
     subprocess.run(["git", "clone", "--quiet", repo_url, repo_dir], check=True, capture_output=True)
+
+    # Enable long paths on Windows to prevent checkout failures
+    if os.name == "nt":
+        subprocess.run(
+            ["git", "config", "core.longpaths", "true"],
+            cwd=repo_dir, check=False, capture_output=True,
+        )
+
     subprocess.run(
         ["git", "checkout", "--quiet", base_commit],
         cwd=repo_dir, check=True, capture_output=True,
@@ -359,6 +400,7 @@ def run_instance(
         if agi_context:
             from redclaw.runtime.subagent import SubagentResult
             from redclaw.runtime.subagent_types import SubagentType
+            from redclaw.crypt.extractor import extract_lessons
 
             sub_result = SubagentResult(
                 success=result["has_patch"],
@@ -372,6 +414,16 @@ def run_instance(
                 SubagentType.CODER,
             )
             logger.info("  Entombed: success=%s", result["has_patch"])
+
+            # ── Immediate lesson injection (between instances) ──
+            lessons = extract_lessons(sub_result, instance["problem_statement"][:500], SubagentType.CODER)
+            for lesson in lessons:
+                if lesson.category == "Warnings":
+                    agi_context["crypt"].append_bloodline_lesson(SubagentType.CODER, lesson.text, lesson.category)
+                    logger.info("  Immediate lesson: %s", lesson.text[:80])
+
+            # ── Counterfactual reasoning ──
+            _inject_counterfactual(agi_context, instance_id, result["has_patch"], tool_calls)
 
     except Exception as e:
         elapsed = time.time() - start

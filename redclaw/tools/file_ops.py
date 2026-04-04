@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from difflib import get_close_matches
 from pathlib import Path
 
 
@@ -13,6 +14,28 @@ def _resolve(path: str, cwd: str) -> Path:
     if not p.is_absolute():
         p = Path(cwd) / p
     return p.resolve()
+
+
+def _file_not_found_hint(resolved: Path) -> str:
+    """Build a helpful error with directory listing and fuzzy matches."""
+    msg = f"Error: File not found: {resolved}"
+    parent = resolved.parent
+    if parent.is_dir():
+        try:
+            siblings = sorted(f.name for f in parent.iterdir() if f.is_file())
+        except OSError:
+            return msg
+        if not siblings:
+            return msg + f"\nDirectory {parent} is empty."
+        name = resolved.name
+        matches = get_close_matches(name, siblings, n=3, cutoff=0.4)
+        if matches:
+            msg += f"\nSimilar files in {parent}: {', '.join(matches)}"
+        elif len(siblings) <= 15:
+            msg += f"\nFiles in {parent}: {', '.join(siblings)}"
+        else:
+            msg += f"\n{len(siblings)} files in {parent}, e.g.: {', '.join(siblings[:10])}, ..."
+    return msg
 
 
 async def execute_read_file(
@@ -27,7 +50,7 @@ async def execute_read_file(
         with open(resolved, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
     except FileNotFoundError:
-        return f"Error: File not found: {resolved}"
+        return _file_not_found_hint(resolved)
     except IsADirectoryError:
         return f"Error: Path is a directory: {resolved}"
     except PermissionError:
@@ -84,7 +107,7 @@ async def execute_edit_file(
         with open(resolved, "r", encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError:
-        return f"Error: File not found: {resolved}"
+        return _file_not_found_hint(resolved)
 
     count = content.count(old_string)
     if count == 0:

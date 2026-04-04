@@ -253,22 +253,26 @@ class DreamSynthesizer:
             result.dharma_updated = True
             result.insights_generated += sections["dharma"].count("-") + sections["dharma"].count("*")
 
-        # Update bloodlines
+        # Update bloodlines — REPLACE entirely with dream-synthesized content
         from redclaw.runtime.subagent_types import SubagentType
         for bl_name in ("coder", "searcher", "general"):
             key = bl_name
             if key in sections and sections[key]:
                 try:
                     sa_type = SubagentType(bl_name)
-                    # Merge: append new insights to existing bloodline
+                    # Build a clean bloodline from dream synthesis
+                    new_lines = [f"# {bl_name.title()} Bloodline Wisdom\n"]
                     for line in sections[key].split("\n"):
                         line = line.strip()
                         if line.startswith("- ") or line.startswith("* "):
-                            text = line[2:].strip()
-                            if text:
-                                crypt.update_bloodline(sa_type, text, "Dream Synthesis")
-                                if bl_name not in result.bloodlines_updated:
-                                    result.bloodlines_updated.append(bl_name)
-                                result.insights_generated += 1
+                            new_lines.append(f"- {line[2:].strip()}")
+                    if len(new_lines) > 1:
+                        crypt._atomic_write(
+                            crypt.bloodlines_dir / f"{bl_name}.md",
+                            "\n".join(new_lines) + "\n",
+                        )
+                        if bl_name not in result.bloodlines_updated:
+                            result.bloodlines_updated.append(bl_name)
+                        result.insights_generated += len(new_lines) - 1
                 except (ValueError, KeyError):
                     pass
