@@ -234,6 +234,17 @@ class Crypt:
             path.unlink()
         return len(to_remove)
 
+    # ── Immediate lesson injection ─────────────────────────────
+
+    def append_bloodline_lesson(self, subagent_type: SubagentType, lesson: str, category: str) -> None:
+        """Append a lesson to the bloodline immediately, without waiting for dream synthesis.
+
+        Used between SWE-bench instances so instance N+1 can learn from instance N.
+        Deduplicates against existing entries.
+        """
+        self._init_bloodline(subagent_type)
+        self.update_bloodline(subagent_type, lesson, category)
+
     # ── Utilities ─────────────────────────────────────────────
 
     def _atomic_write(self, path: Path, content: str) -> None:
