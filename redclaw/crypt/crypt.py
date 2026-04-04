@@ -248,14 +248,25 @@ class Crypt:
     # ── Utilities ─────────────────────────────────────────────
 
     def _atomic_write(self, path: Path, content: str) -> None:
-        """Write file atomically."""
+        """Write file atomically with Windows-safe retry."""
         fd, tmp_path = tempfile.mkstemp(
             dir=str(path.parent), prefix=".crypt_", suffix=".md"
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(content)
-            os.replace(tmp_path, path)
+            # Windows: os.replace can fail with PermissionError due to
+            # AV scanning or brief file locks. Retry with backoff.
+            for attempt in range(3):
+                try:
+                    os.replace(tmp_path, path)
+                    return
+                except PermissionError:
+                    if attempt < 2:
+                        import time
+                        time.sleep(0.1 * (attempt + 1))
+                    else:
+                        raise
         except BaseException:
             try:
                 os.unlink(tmp_path)
