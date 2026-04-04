@@ -61,6 +61,7 @@ def setup_agi(
     provider_config: object,
     client: object,
     model: str,
+    crypt_dir: Path | None = None,
 ) -> dict:
     """Initialize AGI components for cross-instance learning.
 
@@ -78,8 +79,8 @@ def setup_agi(
     event_bus = EventBus()
     event_bus.subscribe(EventLogger())
 
-    crypt = Crypt()
-    dna_manager = DNAManager()
+    crypt = Crypt(crypt_dir=crypt_dir)
+    dna_manager = DNAManager(dna_dir=crypt_dir / "dna" if crypt_dir else None)
     dream = DreamSynthesizer(client, provider_config, model)
 
     crypt._dream_synthesizer = dream
@@ -220,6 +221,7 @@ async def run_redclaw(
 
     from redclaw.api.client import LLMClient
     from redclaw.api.providers import get_provider
+    from redclaw.api.types import InputMessage
     from redclaw.runtime.conversation import ConversationCallbacks, ConversationRuntime
     from redclaw.runtime.permissions import PermissionMode, PermissionPolicy
     from redclaw.runtime.session import Session
@@ -300,6 +302,7 @@ Fix this issue. Make minimal changes. Output the git diff when done.
 
     collected_text = ""
     tool_call_count = 0
+    tool_names: list[str] = []  # Track sequence for entropy/strategy metrics
 
     async def on_text_delta(text: str) -> None:
         nonlocal collected_text
@@ -308,7 +311,17 @@ Fix this issue. Make minimal changes. Output the git diff when done.
     async def on_tool_begin(tool_id: str, name: str, input_json: str) -> None:
         nonlocal tool_call_count
         tool_call_count += 1
+        tool_names.append(name)
         logger.info("  Tool [%d]: %s", tool_call_count, name)
+
+        # Mid-task behavioral injection: warn at high call count
+        if tool_call_count == 15:
+            logger.info("  AGI: High call count (15) — injecting replan warning")
+            rt.session.add_message(InputMessage.user_text(
+                "[SYSTEM WARNING] You have used 15+ tool calls. High call counts correlate with failure. "
+                "Bloodline wisdom suggests: prefer read_file → grep_search → minimal edit_file. "
+                "Stop searching. Re-plan with what you know, then make a targeted edit."
+            ))
 
     async def on_tool_result(tool_id: str, result: str, is_error: bool) -> None:
         if is_error:
@@ -337,7 +350,7 @@ Fix this issue. Make minimal changes. Output the git diff when done.
         collected_text += f"\n\n[ERROR: {e}]"
 
     await client.close()
-    return collected_text, tool_call_count
+    return collected_text, tool_call_count, tool_names
 
 
 def run_instance(
@@ -363,7 +376,7 @@ def run_instance(
         repo_dir = checkout_repo(instance, workdir)
 
         # Run RedClaw
-        output, tool_calls = asyncio.run(run_redclaw(
+        output, tool_calls, tool_names = asyncio.run(run_redclaw(
             repo_dir=repo_dir,
             problem_statement=instance["problem_statement"],
             provider_name=provider,
@@ -394,6 +407,8 @@ def run_instance(
             "model_name_or_path": f"RedClaw ({provider}/{model})",
             "elapsed_seconds": round(elapsed, 1),
             "has_patch": patch is not None,
+            "tool_calls": tool_calls,
+            "tool_names": tool_names,
         }
 
         # Entomb result for AGI wisdom inheritance
@@ -434,6 +449,8 @@ def run_instance(
             "model_name_or_path": f"RedClaw ({provider}/{model})",
             "elapsed_seconds": round(elapsed, 1),
             "has_patch": False,
+            "tool_calls": 0,
+            "tool_names": [],
             "error": str(e),
         }
 
@@ -478,6 +495,7 @@ def main():
     parser.add_argument("--keep-repos", action="store_true", help="Keep cloned repos after run")
     parser.add_argument("--timeout", type=int, default=600, help="Timeout per instance (seconds)")
     parser.add_argument("--agi", action="store_true", help="Enable AGI mode (SOUL, DNA, Dream, Karma — agent learns across instances)")
+    parser.add_argument("--crypt-dir", default=None, help="Custom crypt directory (isolates wisdom state for experiments)")
     args = parser.parse_args()
 
     if not args.instance and not args.dataset:
@@ -497,7 +515,8 @@ def main():
 
         provider_config = get_provider(args.provider, args.base_url)
         client = LLMClient(provider_config)
-        agi_context = setup_agi(provider_config, client, args.model)
+        crypt_dir = Path(args.crypt_dir) if args.crypt_dir else None
+        agi_context = setup_agi(provider_config, client, args.model, crypt_dir=crypt_dir)
 
     logger.info("Running %d instances with %s/%s%s",
                 len(instances), args.provider, args.model,
