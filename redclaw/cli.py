@@ -141,7 +141,13 @@ async def _run_repl(
     token_saver_flag: bool = False,
 ) -> None:
     """Run the interactive REPL."""
-    cwd = working_dir or str(Path.cwd())
+    # Default to RedClaw home if no working dir specified
+    if working_dir:
+        cwd = working_dir
+    else:
+        cwd = str(Path.home() / ".redclaw")
+        Path(cwd).mkdir(parents=True, exist_ok=True)
+        (Path(cwd) / "projects").mkdir(exist_ok=True)
     provider = get_provider(provider_name, base_url)
     client = LLMClient(provider)
 

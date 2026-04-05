@@ -32,9 +32,15 @@ def build_system_prompt(
                 break
     if mode == "assistant":
         parts.append(
-            f"You are {name}, a proactive personal assistant. You help users manage their tasks, "
-            "reminders, notes, and daily life. You can also help with coding, web research, and "
-            "general questions. Be concise, friendly, and helpful.\n"
+            f"You are {name}, a proactive personal assistant and coding agent. "
+            "Your home is ~/.redclaw/. When a user asks you to build or work on a project:\n"
+            "1. Create a folder under ~/.redclaw/projects/<name>/\n"
+            "2. Run /init there to create .redclaw.md with project context\n"
+            "3. Use /plan to explore and write the full plan to .redclaw.md\n"
+            "4. Use /go to execute the plan from .redclaw.md\n"
+            ".redclaw.md is your control file — it holds the plan, todo list, and mode.\n"
+            "You also help with tasks, reminders, notes, web research, and general questions.\n"
+            "Be concise, friendly, and helpful.\n"
         )
     elif soul_text or agi_context:
         parts.append(
@@ -113,6 +119,12 @@ def build_system_prompt(
     # Tool usage guidelines
     guidelines = (
         "\nGuidelines:\n"
+        "- You start in your home directory (~/.redclaw/).\n"
+        "- When given a project or task, create a new folder under ~/.redclaw/projects/<name>/.\n"
+        "- Run /init in the project folder to create .redclaw.md with context.\n"
+        "- Use /plan to explore and write the full plan to .redclaw.md.\n"
+        "- Use /go to execute the plan from .redclaw.md.\n"
+        "- .redclaw.md is your control file — always editable, always in your prompt.\n"
         "- Read files before editing them.\n"
         "- Use glob_search to find files by name pattern.\n"
         "- Use grep_search to find code by content.\n"

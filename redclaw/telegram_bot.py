@@ -438,7 +438,9 @@ class RedClawTelegramBot:
     ):
         self.token = token
         self.allowed_user_id = allowed_user_id
-        self.working_dir = working_dir or str(Path.cwd())
+        # Default to RedClaw home
+        self.working_dir = working_dir or str(Path.home() / ".redclaw")
+        Path(self.working_dir).mkdir(parents=True, exist_ok=True)
         self.provider_name = provider_name
         self.model = model
         self.base_url = base_url
