@@ -153,7 +153,10 @@ class ConversationRuntime:
             self._plan_mode = True
         elif not enabled and self._plan_mode:
             self.tools = self._original_tools
-            self._system_prompt = self._original_system_prompt
+            self._system_prompt = self.system_prompt + (
+                "\n\n[EXECUTE MODE] The user approved the plan. You now have full tools. "
+                "Execute the plan you produced above. Start now."
+            )
             self._plan_mode = False
 
     def abort(self) -> None:
