@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Awaitable
@@ -137,26 +138,41 @@ class ConversationRuntime:
 
     def set_plan_mode(self, enabled: bool) -> None:
         if enabled and not self._plan_mode:
-            readonly_tools = {"read_file", "glob_search", "grep_search", "web_search", "web_reader"}
+            plan_tools = {"read_file", "glob_search", "grep_search", "web_search", "web_reader", "write_file"}
             filtered = ToolExecutor.__new__(ToolExecutor)
             filtered.specs = {
                 name: spec for name, spec in self._original_tools.specs.items()
-                if name in readonly_tools
+                if name in plan_tools
             }
             self.tools = filtered
             self._system_prompt = self.system_prompt + (
                 "\n\n[PLAN MODE] You are in plan mode. Explore the codebase using "
-                "read-only tools only. Produce a clear, step-by-step implementation "
-                "plan. Do NOT write or edit any files. When done, tell the user to "
-                "type /go to execute the plan."
+                "read-only tools. When ready, write your implementation plan to "
+                "plan.md in the working directory. Do NOT edit any other files — "
+                "only write to plan.md. When done, tell the user to type /go to "
+                "execute the plan."
             )
             self._plan_mode = True
         elif not enabled and self._plan_mode:
+            # Read plan.md and feed it to the agent
+            plan_text = ""
+            plan_path = os.path.join(self.working_dir or ".", "plan.md")
+            try:
+                plan_text = open(plan_path, encoding="utf-8").read().strip()
+            except FileNotFoundError:
+                pass
+
             self.tools = self._original_tools
-            self._system_prompt = self.system_prompt + (
-                "\n\n[EXECUTE MODE] The user approved the plan. You now have full tools. "
-                "Execute the plan you produced above. Start now."
-            )
+            if plan_text:
+                self._system_prompt = self.system_prompt + (
+                    "\n\n[EXECUTE MODE] The user approved the plan. Execute it now.\n\n"
+                    f"=== plan.md ===\n{plan_text}\n=== end plan.md ==="
+                )
+            else:
+                self._system_prompt = self.system_prompt + (
+                    "\n\n[EXECUTE MODE] The user approved the plan. You now have "
+                    "full tools. Execute the plan you produced above. Start now."
+                )
             self._plan_mode = False
 
     def abort(self) -> None:

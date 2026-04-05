@@ -628,7 +628,7 @@ class RedClawTelegramBot:
             return
         s = self._get_session(update.effective_user.id)
         s.rt.set_plan_mode(True)
-        await self._send_reply(update, "PLAN MODE — read-only. Use /go to execute.")
+        await self._send_reply(update, "PLAN MODE — explore & write plan.md. Use /go to execute.")
 
     async def cmd_go(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
@@ -636,7 +636,7 @@ class RedClawTelegramBot:
         s = self._get_session(update.effective_user.id)
         if s.rt.plan_mode:
             s.rt.set_plan_mode(False)
-            await self._send_reply(update, "EXECUTE MODE — full tools restored.")
+            await self._send_reply(update, "EXECUTE MODE — reading plan.md, executing now.")
         else:
             await self._send_reply(update, "Not in plan mode. Use /plan first.")
 

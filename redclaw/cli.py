@@ -478,11 +478,11 @@ def _handle_slash_command(
         return True
     elif command == "/plan":
         rt.set_plan_mode(True)
-        console.print("[bold yellow]PLAN MODE[/] — read-only. Use /go to execute.")
+        console.print("[bold yellow]PLAN MODE[/] — explore & write plan.md. Use /go to execute.")
     elif command == "/go":
         if rt.plan_mode:
             rt.set_plan_mode(False)
-            console.print("[bold green]EXECUTE MODE[/] — full tools restored.")
+            console.print("[bold green]EXECUTE MODE[/] — reading plan.md, executing now.")
         else:
             console.print("[dim]Not in plan mode. Use /plan first.[/]")
     elif command == "/help":
