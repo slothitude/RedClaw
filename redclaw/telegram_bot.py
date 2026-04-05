@@ -644,6 +644,10 @@ class RedClawTelegramBot:
         if s.rt.plan_mode:
             s.rt.set_plan_mode(False)
             await self._send_reply(update, "EXECUTE MODE — reading .redclaw.md, executing now.")
+            # Auto-trigger execution turn
+            s.current_task = asyncio.create_task(
+                self._run_agent_turn(update, s, "Execute the plan from .redclaw.md now. Start with step 1.")
+            )
         else:
             await self._send_reply(update, "Not in plan mode. Use /plan first.")
 
@@ -990,85 +994,91 @@ class RedClawTelegramBot:
             pass
 
         async def _process() -> None:
-            collected_text = ""
-            tool_names: list[str] = []
-            created_files: list[str] = []
-            status_msg = None
+            await self._run_agent_turn(update, s, text)
 
-            async def on_text_delta(t: str) -> None:
-                nonlocal collected_text
-                collected_text += t
+        s.current_task = asyncio.create_task(_process())
 
-            async def on_tool_begin(tid: str, name: str, inp: str) -> None:
-                nonlocal status_msg
-                tool_names.append(name)
-                try:
-                    tool_list = " | ".join(f"▶ {n}" for n in tool_names)
-                    if status_msg is None:
-                        status_msg = await update.message.reply_text(tool_list)
-                    else:
-                        await status_msg.edit_text(tool_list)
-                except Exception:
-                    pass
+    async def _run_agent_turn(self, update: Update, s: TelegramSession, text: str) -> None:
+        """Run a single agent turn with full UI feedback."""
+        collected_text = ""
+        tool_names: list[str] = []
+        created_files: list[str] = []
+        status_msg = None
 
-            async def on_tool_result(tid: str, result: str, is_error: bool) -> None:
-                if not is_error and result.startswith("Wrote ") and " bytes to " in result:
-                    path = result.split(" bytes to ", 1)[1].strip()
-                    created_files.append(path)
+        async def on_text_delta(t: str) -> None:
+            nonlocal collected_text
+            collected_text += t
 
-            async def on_usage(u: Usage) -> None:
-                pass
-
-            async def on_error(msg: str) -> None:
-                try:
-                    await update.message.reply_text(f"Error: {msg}")
-                except Exception:
-                    pass
-
-            cb = ConversationCallbacks(
-                on_text_delta=on_text_delta,
-                on_tool_begin=on_tool_begin,
-                on_tool_result=on_tool_result,
-                on_usage=on_usage,
-                on_error=on_error,
-            )
-
-            # Typing indicator
-            async def _keep_typing() -> None:
-                while True:
-                    try:
-                        await update.message.chat.send_action("typing")
-                    except Exception:
-                        pass
-                    await asyncio.sleep(4)
-
-            typing_task = asyncio.create_task(_keep_typing())
+        async def on_tool_begin(tid: str, name: str, inp: str) -> None:
+            nonlocal status_msg
+            tool_names.append(name)
             try:
-                summary = await s.rt.run_turn(text, cb)
-            finally:
-                typing_task.cancel()
-
-            # Send response
-            reply = collected_text.strip() if collected_text.strip() else "(no text response)"
-            if summary.error:
-                reply = f"Error: {summary.error}\n\n{reply}"
-            await self._send_reply(update, reply)
-
-            # Auto-send files created by tools as Telegram documents
-            for fp in created_files:
-                try:
-                    p = Path(fp)
-                    if p.is_file():
-                        with open(p, "rb") as doc:
-                            await update.message.reply_document(document=doc, filename=p.name)
-                except Exception:
-                    pass
-
-            # Update reaction to done
-            try:
-                await update.message.set_reaction("✅")
+                tool_list = " | ".join(f"▶ {n}" for n in tool_names)
+                if status_msg is None:
+                    status_msg = await update.message.reply_text(tool_list)
+                else:
+                    await status_msg.edit_text(tool_list)
             except Exception:
                 pass
+
+        async def on_tool_result(tid: str, result: str, is_error: bool) -> None:
+            if not is_error and result.startswith("Wrote ") and " bytes to " in result:
+                path = result.split(" bytes to ", 1)[1].strip()
+                created_files.append(path)
+
+        async def on_usage(u: Usage) -> None:
+            pass
+
+        async def on_error(msg: str) -> None:
+            try:
+                await update.message.reply_text(f"Error: {msg}")
+            except Exception:
+                pass
+
+        cb = ConversationCallbacks(
+            on_text_delta=on_text_delta,
+            on_tool_begin=on_tool_begin,
+            on_tool_result=on_tool_result,
+            on_usage=on_usage,
+            on_error=on_error,
+        )
+
+        # Typing indicator
+        async def _keep_typing() -> None:
+            while True:
+                try:
+                    await update.message.chat.send_action("typing")
+                except Exception:
+                    pass
+                await asyncio.sleep(4)
+
+        typing_task = asyncio.create_task(_keep_typing())
+        try:
+            summary = await s.rt.run_turn(text, cb)
+        finally:
+            typing_task.cancel()
+
+        # Send response
+        reply = collected_text.strip() if collected_text.strip() else "(no text response)"
+        if summary.error:
+            reply = f"Error: {summary.error}\n\n{reply}"
+        await self._send_reply(update, reply)
+
+        # Auto-send files created by tools as Telegram documents
+        for fp in created_files:
+            try:
+                p = Path(fp)
+                if p.is_file():
+                    with open(p, "rb") as doc:
+                        await update.message.reply_document(document=doc, filename=p.name)
+            except Exception:
+                pass
+
+        # Update reaction to done
+        try:
+            await update.message.set_reaction("✅")
+        except Exception:
+            pass
 
         s.current_task = asyncio.create_task(_process())
 
