@@ -527,6 +527,7 @@ class RedClawTelegramBot:
             "/plan — Enter plan mode (read-only)\n"
             "/go — Execute plan from .redclaw.md\n"
             "/init — Create .redclaw.md with project context\n"
+            "/new <name> — Create project folder and switch to it\n"
             "/get <path> — Download file\n"
             "/getzip <path> — Download directory as zip\n"
             "/ls [path] — List files\n"
@@ -574,6 +575,7 @@ class RedClawTelegramBot:
             "/plan — Enter plan mode (read-only)\n"
             "/go — Execute plan from .redclaw.md\n"
             "/init — Create .redclaw.md with project context\n"
+            "/new <name> — Create project folder and switch to it\n"
             "/get <path> — Download a file\n"
             "/getzip <path> — Download directory as zip\n"
             "/ls [path] — List files in directory\n"
@@ -651,6 +653,37 @@ class RedClawTelegramBot:
         from redclaw.runtime.prompt import _init_redclaw_md
         content = _init_redclaw_md(s.working_dir)
         await self._send_reply(update, f".redclaw.md created ({len(content)} chars)")
+
+    async def cmd_new(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        """Create a new project folder and switch to it."""
+        if not self._check_user(update):
+            return
+        text = (update.message.text or "").strip()
+        parts = text.split(maxsplit=1)
+        name = parts[1] if len(parts) > 1 else ""
+        if not name:
+            await self._send_reply(update, "Usage: /new <project-name>")
+            return
+
+        # Create project dir
+        from pathlib import Path
+        projects_dir = Path.home() / ".redclaw" / "projects"
+        projects_dir.mkdir(parents=True, exist_ok=True)
+        project_dir = projects_dir / name
+        project_dir.mkdir(exist_ok=True)
+
+        # Switch session working dir
+        uid = update.effective_user.id
+        s = self._get_session(uid)
+        old_dir = s.working_dir
+        s.working_dir = str(project_dir)
+        s.rt.working_dir = str(project_dir)
+        s.session.working_dir = str(project_dir)
+
+        # Init .redclaw.md in project
+        from redclaw.runtime.prompt import _init_redclaw_md
+        content = _init_redclaw_md(str(project_dir))
+        await self._send_reply(update, f"Project '{name}' created.\n.redclaw.md initialized.\nDir: {project_dir}")
 
     async def cmd_provider(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
@@ -1344,6 +1377,7 @@ class RedClawTelegramBot:
         app.add_handler(CommandHandler("plan", self.cmd_plan))
         app.add_handler(CommandHandler("go", self.cmd_go))
         app.add_handler(CommandHandler("init", self.cmd_init))
+        app.add_handler(CommandHandler("new", self.cmd_new))
         app.add_handler(CommandHandler("get", self.cmd_get))
         app.add_handler(CommandHandler("getzip", self.cmd_getzip))
         app.add_handler(CommandHandler("ls", self.cmd_ls))
@@ -1394,6 +1428,7 @@ class RedClawTelegramBot:
             BotCommand("plan", "Enter plan mode (read-only)"),
             BotCommand("go", "Execute plan from .redclaw.md"),
             BotCommand("init", "Create .redclaw.md project context"),
+            BotCommand("new", "Create project folder and switch"),
             BotCommand("get", "Download a file"),
             BotCommand("getzip", "Download folder as zip"),
             BotCommand("ls", "List working directory"),
