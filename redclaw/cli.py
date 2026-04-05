@@ -496,7 +496,7 @@ def _handle_slash_command(
             return
         from pathlib import Path
         projects = Path.home() / ".redclaw" / "projects"
- / name
+        project_dir = projects / name
         project_dir.mkdir(parents=True, exist_ok=True)
         rt.working_dir = str(project_dir)
         rt.session.working_dir = str(project_dir)
