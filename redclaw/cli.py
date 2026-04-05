@@ -505,6 +505,9 @@ def _handle_slash_command(
         console.print(f"[bold green]Project '{name}' created[/] at {project_dir}")
         console.print(f"[dim].redclaw.md initialized ({len(content)} chars)[/]")
         rt._system_prompt = None
+        # Auto-enter plan mode so agent starts planning
+        rt.set_plan_mode(True)
+        console.print("[bold yellow]PLAN MODE[/] — describe what you want to build.")
     elif command == "/plan":
         rt.set_plan_mode(True)
         console.print("[bold yellow]PLAN MODE[/] — explore & write .redclaw.md. Use /go to execute.")
