@@ -330,7 +330,8 @@ async def _run_repl(
     # REPL loop
     while True:
         try:
-            user_input = console.input("[bold green]> [/]").strip()
+            prompt_text = "[bold red]plan> [/]" if rt.plan_mode else "[bold green]> [/]"
+            user_input = console.input(prompt_text).strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Goodbye![/]")
             break
@@ -475,6 +476,15 @@ def _handle_slash_command(
 
     if command in ("/quit", "/exit", "/q"):
         return True
+    elif command == "/plan":
+        rt.set_plan_mode(True)
+        console.print("[bold yellow]PLAN MODE[/] — read-only. Use /go to execute.")
+    elif command == "/go":
+        if rt.plan_mode:
+            rt.set_plan_mode(False)
+            console.print("[bold green]EXECUTE MODE[/] — full tools restored.")
+        else:
+            console.print("[dim]Not in plan mode. Use /plan first.[/]")
     elif command == "/help":
         agi_cmds = ""
         if agi_executive:
@@ -487,6 +497,8 @@ def _handle_slash_command(
             "Commands:\n"
             "  /help     — Show this help\n"
             "  /quit     — Exit\n"
+            "  /plan     — Enter plan mode (read-only, produce a plan)\n"
+            "  /go       — Exit plan mode, restore full tools\n"
             "  /compact  — Compact conversation history\n"
             "  /clear    — Clear session history\n"
             "  /usage    — Show token usage\n"

@@ -110,6 +110,9 @@ class ConversationRuntime:
         self._soul_text = soul_text
         self._agi_context = agi_context
         self._token_saver = token_saver
+        self._original_tools = tools
+        self._original_system_prompt = system_prompt
+        self._plan_mode = False
 
     @property
     def system_prompt(self) -> str:
@@ -127,6 +130,31 @@ class ConversationRuntime:
                 agi_context=self._agi_context,
             )
         return self._system_prompt
+
+    @property
+    def plan_mode(self) -> bool:
+        return self._plan_mode
+
+    def set_plan_mode(self, enabled: bool) -> None:
+        if enabled and not self._plan_mode:
+            from redclaw.tools.toolsets import resolve_toolset
+            readonly = resolve_toolset("readonly")
+            filtered = ToolExecutor(working_dir=self.tools._working_dir)
+            for name, spec in self._original_tools.specs.items():
+                if name in readonly:
+                    filtered.specs[name] = spec
+            self.tools = filtered
+            self._system_prompt = self.system_prompt + (
+                "\n\n[PLAN MODE] You are in plan mode. Explore the codebase using "
+                "read-only tools only. Produce a clear, step-by-step implementation "
+                "plan. Do NOT write or edit any files. When done, tell the user to "
+                "type /go to execute the plan."
+            )
+            self._plan_mode = True
+        elif not enabled and self._plan_mode:
+            self.tools = self._original_tools
+            self._system_prompt = self._original_system_prompt
+            self._plan_mode = False
 
     def abort(self) -> None:
         """Signal the current turn to abort."""
