@@ -207,7 +207,8 @@ def _init_redclaw_md(cwd: str) -> str:
         parts.append("  (unable to scan)")
     parts.append("```\n")
 
-    # Todo
+    # Plan & Todo
+    parts.append("## Plan\n_No plan yet — use /plan to create one._\n")
     parts.append("## Todo\n- [ ] _no tasks yet_\n")
 
     content = "\n".join(parts)

@@ -147,10 +147,11 @@ class ConversationRuntime:
             self.tools = filtered
             self._system_prompt = self.system_prompt + (
                 "\n\n[PLAN MODE] You are in plan mode. Explore the codebase, then "
-                "update .redclaw.md with your plan and todo list. You may ONLY write "
-                "to .redclaw.md — do not edit any other files. Mark the mode as "
-                "\"planning\" in .redclaw.md. When done, tell the user to type /go "
-                "to execute the plan."
+                "write the full implementation plan to .redclaw.md. This file is your "
+                "single source of truth — it contains the plan, the todo checklist, and "
+                "any notes. You may ONLY write to .redclaw.md — do not edit any other "
+                "files. Set the mode to \"planning\" in .redclaw.md. When done, tell "
+                "the user to type /go to execute the plan."
             )
             self._plan_mode = True
         elif not enabled and self._plan_mode:
@@ -176,7 +177,9 @@ class ConversationRuntime:
             if rc_text:
                 self._system_prompt = self.system_prompt + (
                     "\n\n[EXECUTE MODE] The user approved the plan. Execute it now.\n"
-                    "Check off todo items in .redclaw.md as you complete them.\n\n"
+                    "Follow the plan in .redclaw.md step by step. Check off todo "
+                    "items and update the file as you work. .redclaw.md is always "
+                    "editable — keep it current.\n\n"
                     f"=== .redclaw.md ===\n{rc_text}\n=== end .redclaw.md ==="
                 )
             else:
