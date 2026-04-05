@@ -139,10 +139,11 @@ class ConversationRuntime:
         if enabled and not self._plan_mode:
             from redclaw.tools.toolsets import resolve_toolset
             readonly = resolve_toolset("readonly")
-            filtered = ToolExecutor(working_dir=self.tools._working_dir)
-            for name, spec in self._original_tools.specs.items():
-                if name in readonly:
-                    filtered.specs[name] = spec
+            filtered = ToolExecutor.__new__(ToolExecutor)
+            filtered.specs = {
+                name: spec for name, spec in self._original_tools.specs.items()
+                if name in readonly
+            }
             self.tools = filtered
             self._system_prompt = self.system_prompt + (
                 "\n\n[PLAN MODE] You are in plan mode. Explore the codebase using "
