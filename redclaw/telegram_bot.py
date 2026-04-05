@@ -684,7 +684,11 @@ class RedClawTelegramBot:
         # Init .redclaw.md in project
         from redclaw.runtime.prompt import _init_redclaw_md
         content = _init_redclaw_md(str(project_dir))
-        await self._send_reply(update, f"Project '{name}' created.\n.redclaw.md initialized.\nDir: {project_dir}")
+
+        # Auto-enter plan mode
+        s.rt.set_plan_mode(True)
+
+        await self._send_reply(update, f"Project '{name}' created.\n.redclaw.md initialized.\nPLAN MODE — describe what you want to build.\nUse /go to execute.")
 
     async def cmd_provider(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
