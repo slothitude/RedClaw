@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "redclaw"
-version = "0.3.0"
+version = "0.4.0"
 description = "RedClaw — the self-learning AI agent that kills drudgery. SOUL constitution, DNA evolution, dream synthesis, meeseek subagents, 6 interfaces, any LLM provider."
 authors = [
     {name = "slothitude"},
