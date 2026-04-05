@@ -101,6 +101,14 @@ MCP Client (redclaw/mcp_client.py)
 
 Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`, `--assistant`, `--knowledge`, `--knowledge-dir`, `--knowledge-api-key`, `--agi`, `--agi-interval`, `--update`
 
+### Plan Mode
+
+Toggleable read-only planning in the REPL via `ConversationRuntime.set_plan_mode()`:
+- `/plan` — restricts tools to readonly set (`read_file`, `glob_search`, `grep_search`), appends plan instructions to system prompt, prompt changes to red `plan>`
+- `/go` — restores full tools and original system prompt, prompt returns to green `>`
+- Context from plan mode is preserved when switching back to execute mode
+- Storage: in-memory state on `ConversationRuntime` (`_plan_mode`, `_original_tools`, `_original_system_prompt`)
+
 ### Force Update
 
 `--update` flag triggers `force_update()` in `redclaw/updater.py`:
