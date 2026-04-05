@@ -559,12 +559,12 @@ def _choose_mode() -> str | None:
     from redclaw import __version__
 
     console.print(f"\n[bold red]RedClaw[/] v{__version__} — Choose a mode:\n")
+    console.print("  [bold]Enter[/] [cyan]Telegram+Assistant[/] (default)")
     console.print("  [bold]1)[/] [cyan]REPL[/]         Interactive CLI coding agent")
     console.print("  [bold]2)[/] [cyan]Dashboard[/]    Web config GUI + process launcher (port 9090)")
     console.print("  [bold]3)[/] [cyan]WebChat[/]      Browser-based chat (port 8080)")
-    console.print("  [bold]4)[/] [cyan]Telegram[/]     Telegram bot")
-    console.print("  [bold]5)[/] [cyan]AGI[/]          Autonomous goal-pursuing agent (REPL + executive)")
-    console.print("  [bold]6)[/] [cyan]Guide[/]        Open the user guide in your browser")
+    console.print("  [bold]4)[/] [cyan]AGI[/]          Autonomous goal-pursuing agent (REPL + executive)")
+    console.print("  [bold]5)[/] [cyan]Guide[/]        Open the user guide in your browser")
     console.print()
     console.print("  [bold]0)[/] Exit")
     console.print()
@@ -575,17 +575,17 @@ def _choose_mode() -> str | None:
         except (EOFError, KeyboardInterrupt):
             return None
 
-        modes = {"1": "repl", "2": "dashboard", "3": "webchat", "4": "telegram", "5": "agi", "6": "guide"}
+        if choice in ("", "t", "telegram"):
+            return "telegram_assistant"
         if choice == "0" or choice.lower() in ("q", "quit", "exit"):
             return None
-        if choice == "6":
+        if choice == "5":
             _open_guide()
             continue
-        if choice == "5":
-            return "agi"
+        modes = {"1": "repl", "2": "dashboard", "3": "webchat", "4": "agi"}
         if choice in modes:
             return modes[choice]
-        console.print("[yellow]Invalid choice. Enter 0-6.[/]")
+        console.print("[yellow]Invalid choice. Enter for Telegram, or 0-5.[/]")
 
 
 def _open_guide() -> None:
@@ -630,7 +630,11 @@ def main() -> int | None:
         mode = _choose_mode()
         if mode is None:
             return 0
-        args.mode = mode
+        if mode == "telegram_assistant":
+            args.mode = "telegram"
+            args.assistant = True
+        else:
+            args.mode = mode
 
     if args.mode == "rpc":
         from redclaw.rpc import run_rpc
