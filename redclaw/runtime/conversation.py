@@ -146,27 +146,38 @@ class ConversationRuntime:
             }
             self.tools = filtered
             self._system_prompt = self.system_prompt + (
-                "\n\n[PLAN MODE] You are in plan mode. Explore the codebase using "
-                "read-only tools. When ready, write your implementation plan to "
-                "plan.md in the working directory. Do NOT edit any other files — "
-                "only write to plan.md. When done, tell the user to type /go to "
-                "execute the plan."
+                "\n\n[PLAN MODE] You are in plan mode. Explore the codebase, then "
+                "update .redclaw.md with your plan and todo list. You may ONLY write "
+                "to .redclaw.md — do not edit any other files. Mark the mode as "
+                "\"planning\" in .redclaw.md. When done, tell the user to type /go "
+                "to execute the plan."
             )
             self._plan_mode = True
         elif not enabled and self._plan_mode:
-            # Read plan.md and feed it to the agent
-            plan_text = ""
-            plan_path = os.path.join(self.working_dir or ".", "plan.md")
+            # Read .redclaw.md and feed it to the agent
+            rc_text = ""
+            rc_path = os.path.join(self.working_dir or ".", ".redclaw.md")
             try:
-                plan_text = open(plan_path, encoding="utf-8").read().strip()
+                rc_text = open(rc_path, encoding="utf-8").read().strip()
             except FileNotFoundError:
                 pass
 
             self.tools = self._original_tools
-            if plan_text:
+
+            # Update .redclaw.md mode to executing
+            if rc_text:
+                rc_text = rc_text.replace("## Mode: planning", "## Mode: executing")
+                try:
+                    with open(rc_path, "w", encoding="utf-8") as f:
+                        f.write(rc_text)
+                except OSError:
+                    pass
+
+            if rc_text:
                 self._system_prompt = self.system_prompt + (
-                    "\n\n[EXECUTE MODE] The user approved the plan. Execute it now.\n\n"
-                    f"=== plan.md ===\n{plan_text}\n=== end plan.md ==="
+                    "\n\n[EXECUTE MODE] The user approved the plan. Execute it now.\n"
+                    "Check off todo items in .redclaw.md as you complete them.\n\n"
+                    f"=== .redclaw.md ===\n{rc_text}\n=== end .redclaw.md ==="
                 )
             else:
                 self._system_prompt = self.system_prompt + (

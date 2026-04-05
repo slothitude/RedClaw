@@ -476,13 +476,20 @@ def _handle_slash_command(
 
     if command in ("/quit", "/exit", "/q"):
         return True
+    elif command == "/init":
+        from redclaw.runtime.prompt import _init_redclaw_md
+        cwd = rt.working_dir or str(Path.cwd())
+        content = _init_redclaw_md(cwd)
+        console.print(f"[bold green].redclaw.md created[/] ({len(content)} chars)")
+        # Reload prompt so it picks up the new file
+        rt._system_prompt = None
     elif command == "/plan":
         rt.set_plan_mode(True)
-        console.print("[bold yellow]PLAN MODE[/] — explore & write plan.md. Use /go to execute.")
+        console.print("[bold yellow]PLAN MODE[/] — explore & write .redclaw.md. Use /go to execute.")
     elif command == "/go":
         if rt.plan_mode:
             rt.set_plan_mode(False)
-            console.print("[bold green]EXECUTE MODE[/] — reading plan.md, executing now.")
+            console.print("[bold green]EXECUTE MODE[/] — reading .redclaw.md, executing now.")
         else:
             console.print("[dim]Not in plan mode. Use /plan first.[/]")
     elif command == "/help":
@@ -497,8 +504,9 @@ def _handle_slash_command(
             "Commands:\n"
             "  /help     — Show this help\n"
             "  /quit     — Exit\n"
-            "  /plan     — Enter plan mode (read-only, produce a plan)\n"
-            "  /go       — Exit plan mode, restore full tools\n"
+            "  /init     — Create .redclaw.md with project context\n"
+            "  /plan     — Enter plan mode (read-only, write .redclaw.md)\n"
+            "  /go       — Execute the plan in .redclaw.md\n"
             "  /compact  — Compact conversation history\n"
             "  /clear    — Clear session history\n"
             "  /usage    — Show token usage\n"

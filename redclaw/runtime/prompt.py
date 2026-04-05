@@ -76,6 +76,11 @@ def build_system_prompt(
     if claw_md:
         parts.append(f"\nProject instructions (CLAW.md):\n{claw_md}")
 
+    # .redclaw.md — agent's control file (todo list, mode, plan)
+    redclaw_md = _read_redclaw_md(cwd)
+    if redclaw_md:
+        parts.append(f"\n.redclaw.md (your control file — always editable):\n{redclaw_md}")
+
     # Extra instructions
     if extra_instructions:
         parts.append(f"\nAdditional instructions:\n{extra_instructions}")
@@ -163,6 +168,52 @@ def _read_claw_md(cwd: str) -> str | None:
                 return path.read_text(encoding="utf-8", errors="replace")
 
     return None
+
+
+def _read_redclaw_md(cwd: str) -> str | None:
+    """Read .redclaw.md from the working directory (agent control file)."""
+    path = Path(cwd) / ".redclaw.md"
+    if path.is_file():
+        return path.read_text(encoding="utf-8", errors="replace")
+    return None
+
+
+def _init_redclaw_md(cwd: str) -> str:
+    """Create a starter .redclaw.md with project context. Returns the content."""
+    parts = ["# RedClaw\n"]
+    parts.append("## Mode: ready\n")
+
+    # Git info
+    git_info = _get_git_context(cwd)
+    if git_info:
+        parts.append(f"## Git\n{git_info}\n")
+
+    # Project tree overview (top 2 levels)
+    parts.append("## Project Structure\n```\n")
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--", "*.py", "*.md", "*.yaml", "*.yml", "*.toml", "*.json"],
+            capture_output=True, text=True, cwd=cwd, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            files = result.stdout.strip().split("\n")[:50]
+            for f in files:
+                parts.append(f"  {f}")
+            if len(result.stdout.strip().split("\n")) > 50:
+                parts.append("  ... (truncated)")
+        else:
+            parts.append("  (not a git repo or no tracked files)")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        parts.append("  (unable to scan)")
+    parts.append("```\n")
+
+    # Todo
+    parts.append("## Todo\n- [ ] _no tasks yet_\n")
+
+    content = "\n".join(parts)
+    path = Path(cwd) / ".redclaw.md"
+    path.write_text(content, encoding="utf-8")
+    return content
 
 
 def _skills_experience_block() -> str:
