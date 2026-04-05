@@ -489,6 +489,22 @@ def _handle_slash_command(
         console.print(f"[bold green].redclaw.md created[/] ({len(content)} chars)")
         # Reload prompt so it picks up the new file
         rt._system_prompt = None
+    elif command == "/new":
+        name = arg.strip() if arg else ""
+        if not name:
+            console.print("[yellow]Usage: /new <project-name>[/]")
+            return
+        from pathlib import Path
+        projects = Path.home() / ".redclaw" / "projects"
+ / name
+        project_dir.mkdir(parents=True, exist_ok=True)
+        rt.working_dir = str(project_dir)
+        rt.session.working_dir = str(project_dir)
+        from redclaw.runtime.prompt import _init_redclaw_md
+        content = _init_redclaw_md(str(project_dir))
+        console.print(f"[bold green]Project '{name}' created[/] at {project_dir}")
+        console.print(f"[dim].redclaw.md initialized ({len(content)} chars)[/]")
+        rt._system_prompt = None
     elif command == "/plan":
         rt.set_plan_mode(True)
         console.print("[bold yellow]PLAN MODE[/] — explore & write .redclaw.md. Use /go to execute.")
@@ -511,6 +527,7 @@ def _handle_slash_command(
             "  /help     — Show this help\n"
             "  /quit     — Exit\n"
             "  /init     — Create .redclaw.md with project context\n"
+            "  /new <n>   — Create project folder, switch to it,\n"
             "  /plan     — Enter plan mode (read-only, write .redclaw.md)\n"
             "  /go       — Execute the plan in .redclaw.md\n"
             "  /compact  — Compact conversation history\n"
