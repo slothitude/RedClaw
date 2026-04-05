@@ -523,7 +523,8 @@ class RedClawTelegramBot:
             "/crypt — Wisdom inheritance stats\n"
             "/abort — Abort current turn\n"
             "/plan — Enter plan mode (read-only)\n"
-            "/go — Exit plan mode, restore tools\n"
+            "/go — Execute plan from .redclaw.md\n"
+            "/init — Create .redclaw.md with project context\n"
             "/get <path> — Download file\n"
             "/getzip <path> — Download directory as zip\n"
             "/ls [path] — List files\n"
@@ -569,7 +570,8 @@ class RedClawTelegramBot:
             "/crypt — Wisdom inheritance stats\n"
             "/abort — Abort current turn\n"
             "/plan — Enter plan mode (read-only)\n"
-            "/go — Exit plan mode, restore tools\n"
+            "/go — Execute plan from .redclaw.md\n"
+            "/init — Create .redclaw.md with project context\n"
             "/get <path> — Download a file\n"
             "/getzip <path> — Download directory as zip\n"
             "/ls [path] — List files in directory\n"
@@ -628,7 +630,7 @@ class RedClawTelegramBot:
             return
         s = self._get_session(update.effective_user.id)
         s.rt.set_plan_mode(True)
-        await self._send_reply(update, "PLAN MODE — explore & write plan.md. Use /go to execute.")
+        await self._send_reply(update, "PLAN MODE — explore & write .redclaw.md. Use /go to execute.")
 
     async def cmd_go(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
@@ -636,9 +638,17 @@ class RedClawTelegramBot:
         s = self._get_session(update.effective_user.id)
         if s.rt.plan_mode:
             s.rt.set_plan_mode(False)
-            await self._send_reply(update, "EXECUTE MODE — reading plan.md, executing now.")
+            await self._send_reply(update, "EXECUTE MODE — reading .redclaw.md, executing now.")
         else:
             await self._send_reply(update, "Not in plan mode. Use /plan first.")
+
+    async def cmd_init(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._check_user(update):
+            return
+        s = self._get_session(update.effective_user.id)
+        from redclaw.runtime.prompt import _init_redclaw_md
+        content = _init_redclaw_md(s.working_dir)
+        await self._send_reply(update, f".redclaw.md created ({len(content)} chars)")
 
     async def cmd_provider(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._check_user(update):
@@ -1331,6 +1341,7 @@ class RedClawTelegramBot:
         app.add_handler(CommandHandler("abort", self.cmd_abort))
         app.add_handler(CommandHandler("plan", self.cmd_plan))
         app.add_handler(CommandHandler("go", self.cmd_go))
+        app.add_handler(CommandHandler("init", self.cmd_init))
         app.add_handler(CommandHandler("get", self.cmd_get))
         app.add_handler(CommandHandler("getzip", self.cmd_getzip))
         app.add_handler(CommandHandler("ls", self.cmd_ls))
@@ -1379,7 +1390,8 @@ class RedClawTelegramBot:
             BotCommand("crypt", "Crypt wisdom stats"),
             BotCommand("abort", "Abort current response"),
             BotCommand("plan", "Enter plan mode (read-only)"),
-            BotCommand("go", "Exit plan mode, execute"),
+            BotCommand("go", "Execute plan from .redclaw.md"),
+            BotCommand("init", "Create .redclaw.md project context"),
             BotCommand("get", "Download a file"),
             BotCommand("getzip", "Download folder as zip"),
             BotCommand("ls", "List working directory"),
