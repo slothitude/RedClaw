@@ -137,12 +137,11 @@ class ConversationRuntime:
 
     def set_plan_mode(self, enabled: bool) -> None:
         if enabled and not self._plan_mode:
-            from redclaw.tools.toolsets import resolve_toolset
-            readonly = resolve_toolset("readonly")
+            readonly_tools = {"read_file", "glob_search", "grep_search", "web_search", "web_reader"}
             filtered = ToolExecutor.__new__(ToolExecutor)
             filtered.specs = {
                 name: spec for name, spec in self._original_tools.specs.items()
-                if name in readonly
+                if name in readonly_tools
             }
             self.tools = filtered
             self._system_prompt = self.system_prompt + (
