@@ -157,6 +157,7 @@ class TelegramSession:
             assistant_context=assistant_context,
         )
         self.current_task: asyncio.Task | None = None
+        self.pending_context: list[str] = []  # Queued messages to inject after current task
 
     def _register_assistant_tools(self) -> None:
         """Register task, note, reminder, and knowledge graph tools."""
@@ -963,10 +964,20 @@ class RedClawTelegramBot:
 
         s = self._get_session(update.effective_user.id)
 
-        # Check if already processing
+        # Queue message if already processing (don't lose it)
         if s.current_task and not s.current_task.done():
-            await self._send_reply(update, "Still processing previous message. Use /abort to cancel.")
+            s.pending_context.append(text)
+            try:
+                await update.message.set_reaction("📥")
+            except Exception:
+                pass
             return
+
+        # Prepend any queued "by the way" messages to this one
+        if s.pending_context:
+            queued = s.pending_context.copy()
+            s.pending_context.clear()
+            text = "[User sent while you were busy — address these too]:\n" + "\n".join(queued) + "\n\n[Latest message]:\n" + text
 
         # React with processing indicator
         try:
