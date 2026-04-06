@@ -108,12 +108,26 @@ class WikiManager:
         return ""
 
     def _update_index(self, page: WikiPage) -> None:
-        """Append a page entry to wiki/index.md."""
+        """Upsert a page entry in wiki/index.md. Replaces existing entry for same topic/slug."""
         current = self._load_index()
-        entry = f"- [{page.title}]({page.topic}/{Path(page.compiled_path).stem}) — {page.word_count} words ({page.ingested_at})\n"
+        slug = f"{page.topic}/{Path(page.compiled_path).stem}"
+        entry = f"- [{page.title}]({slug}) — {page.word_count} words ({page.ingested_at})\n"
         if not current.strip():
             current = "# Wiki Index\n\n"
-        self._atomic_write(self._index_path, current + entry)
+            self._atomic_write(self._index_path, current + entry)
+            return
+        # Replace existing line for this slug, or append
+        lines = current.split("\n")
+        key = f"]({slug})"
+        replaced = False
+        for i, line in enumerate(lines):
+            if key in line:
+                lines[i] = entry.rstrip("\n")
+                replaced = True
+                break
+        if not replaced:
+            lines.append(entry.rstrip("\n"))
+        self._atomic_write(self._index_path, "\n".join(lines) + "\n")
 
     def _append_log(self, action: str, detail: str) -> None:
         """Append to wiki/log.md."""
