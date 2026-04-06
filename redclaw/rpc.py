@@ -57,6 +57,53 @@ def _reply(id: int | None, result: Any = None, error: Any = None) -> None:
     _emit(resp)
 
 
+async def _handle_sim_command(action: str, params: dict[str, Any], engine: Any) -> dict[str, Any]:
+    """Dispatch simulation commands."""
+    if action == "spawn_entity":
+        props = params.get("properties", {})
+        entity = engine.spawn_entity(
+            entity_type=params.get("entity_type", "particle"),
+            x=float(params.get("x", 0)),
+            y=float(params.get("y", 0)),
+            properties=props,
+        )
+        _emit({"type": "sim_entity_spawned", "entity_id": entity.entity_id, "entity_type": entity.entity_type, "x": entity.x, "y": entity.y})
+        return {"entity_id": entity.entity_id, "x": entity.x, "y": entity.y}
+    elif action == "remove_entity":
+        ok = engine.remove_entity(params.get("entity_id", ""))
+        _emit({"type": "sim_entity_removed", "entity_id": params.get("entity_id", "")})
+        return {"removed": ok}
+    elif action == "set_parameter":
+        param = engine.set_parameter(params.get("name", ""), float(params.get("value", 0)))
+        return {"name": param.name, "value": param.value}
+    elif action == "query_state":
+        return engine.query_state(
+            filter_type=params.get("filter_type"),
+            entity_id=params.get("entity_id"),
+        )
+    elif action == "apply_force":
+        ok = engine.apply_force(params.get("entity_id", ""), float(params.get("fx", 0)), float(params.get("fy", 0)))
+        return {"applied": ok}
+    elif action == "start":
+        return {"started": True}
+    elif action == "stop":
+        return {"stopped": True}
+    elif action == "reset":
+        engine.reset()
+        _emit({"type": "sim_reset"})
+        return {"reset": True}
+    elif action == "get_metrics":
+        metrics = engine.get_metrics()
+        return {
+            "total_entities": metrics.total_entities,
+            "total_ticks": metrics.total_ticks,
+            "stability_score": metrics.stability_score,
+            "entity_types": metrics.entity_types,
+        }
+    else:
+        return {"error": f"Unknown sim action: {action}"}
+
+
 async def run_rpc(
     provider_name: str,
     model: str,
@@ -64,6 +111,7 @@ async def run_rpc(
     perm_mode: str,
     session_id: str | None,
     working_dir: str | None,
+    sim_enabled: bool = False,
 ) -> None:
     """Run the JSON-RPC server on stdio."""
     cwd = working_dir or str(Path.cwd())
@@ -78,6 +126,22 @@ async def run_rpc(
     tools = ToolExecutor(working_dir=cwd)
     policy = PermissionPolicy(mode=PermissionMode(perm_mode))
     tracker = UsageTracker()
+
+    # Simulation engine (gated behind --sim flag)
+    _sim_engine = None
+    _sim_runner = None
+    if sim_enabled:
+        from redclaw.sim.engine import SimEngine
+        from redclaw.sim.runner import SimRunner
+        from redclaw.sim.tools import register_sim_tools
+        _sim_engine = SimEngine()
+        register_sim_tools(tools, _sim_engine)
+
+        async def _emit_sim_tick(data: dict[str, Any]) -> None:
+            _emit(data)
+
+        _sim_runner = SimRunner(_sim_engine, emit_fn=_emit_sim_tick)
+        await _sim_runner.start()
 
     rt = ConversationRuntime(
         client=client,
@@ -229,6 +293,17 @@ async def run_rpc(
                 except Exception as e:
                     _reply(req_id, error=str(e))
 
+            elif method == "sim_command":
+                if not _sim_engine:
+                    _reply(req_id, error="Simulation not enabled. Use --sim flag.")
+                    continue
+                action = params.get("action", "")
+                try:
+                    result = await _handle_sim_command(action, params, _sim_engine)
+                    _reply(req_id, result=result)
+                except Exception as e:
+                    _reply(req_id, error=str(e))
+
             else:
                 _reply(req_id, error=f"Unknown method: {method}")
 
@@ -237,4 +312,6 @@ async def run_rpc(
     except Exception:
         pass
     finally:
+        if _sim_runner and _sim_runner.running:
+            await _sim_runner.stop()
         await client.close()

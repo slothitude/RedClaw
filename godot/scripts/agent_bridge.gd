@@ -14,6 +14,11 @@ signal connection_status_changed(connected: bool)
 signal ready_received(session_id: String, model: String, provider: String)
 signal plan_mode_changed(enabled: bool)
 signal wiki_result(answer: String)
+signal sim_state_received(state: Dictionary)
+signal sim_entity_spawned(entity_id: String, entity_type: String, x: float, y: float)
+signal sim_entity_removed(entity_id: String)
+signal sim_tick_received(tick: int, positions: Dictionary, metrics: Dictionary)
+signal sim_reset()
 
 var _pid: int = -1
 var _stdin_pipe: FileAccess = null
@@ -155,6 +160,13 @@ func wiki_ingest(source: String, topic: String = "general") -> void:
 	_send_request("wiki_ingest", {"source": source, "topic": topic})
 
 
+## Send a simulation command.
+func sim_command(action: String, params: Dictionary = {}) -> void:
+	var p: Dictionary = {"action": action}
+	p.merge(params)
+	_send_request("sim_command", p)
+
+
 ## Send a JSON-RPC request.
 func _send_request(method: String, params: Dictionary = {}) -> void:
 	_request_id += 1
@@ -268,3 +280,20 @@ func _handle_line(line: String) -> void:
 			error_occurred.emit(obj.get("message", "Unknown error"))
 		"plan_mode_changed":
 			plan_mode_changed.emit(obj.get("enabled", false))
+		"sim_entity_spawned":
+			sim_entity_spawned.emit(
+				obj.get("entity_id", ""),
+				obj.get("entity_type", "particle"),
+				float(obj.get("x", 0.0)),
+				float(obj.get("y", 0.0))
+			)
+		"sim_entity_removed":
+			sim_entity_removed.emit(obj.get("entity_id", ""))
+		"sim_tick":
+			sim_tick_received.emit(
+				int(obj.get("tick", 0)),
+				obj.get("positions", {}),
+				obj.get("metrics", {})
+			)
+		"sim_reset":
+			sim_reset.emit()

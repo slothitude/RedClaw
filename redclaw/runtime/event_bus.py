@@ -26,6 +26,10 @@ EVENT_SUBAGENT_SPAWNED = "subagent_spawned"
 EVENT_SUBAGENT_COMPLETED = "subagent_completed"
 EVENT_DREAM_COMPLETED = "dream_completed"
 EVENT_KARMA_ALERT = "karma_alert"
+EVENT_SIM_CREATED = "sim_created"
+EVENT_SIM_TICK_MILESTONE = "sim_tick_milestone"
+EVENT_SIM_STABILITY_CHANGED = "sim_stability_changed"
+
 
 
 @dataclass
@@ -107,6 +111,7 @@ class EventLogger:
         EVENT_GOAL_CREATED, EVENT_GOAL_COMPLETED,
         EVENT_SUBAGENT_COMPLETED, EVENT_DREAM_COMPLETED,
         EVENT_KARMA_ALERT,
+        EVENT_SIM_CREATED, EVENT_SIM_TICK_MILESTONE, EVENT_SIM_STABILITY_CHANGED,
     }
 
     def __init__(self, log_dir: Path | None = None) -> None:

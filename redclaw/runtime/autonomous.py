@@ -274,7 +274,7 @@ class AutonomousExecutive:
             f"Criteria: {goal.completion_criteria or 'Task is complete when all steps succeed.'}\n\n"
             "For each step, specify:\n"
             "- task: what to do\n"
-            "- type: 'coder', 'searcher', or 'general'\n\n"
+            "- type: 'coder', 'searcher', 'general', or 'simulator'\n\n"
             "Output one step per line: TYPE | task description"
         )
 
@@ -306,7 +306,7 @@ class AutonomousExecutive:
             task = parts[1].strip()
             if not task:
                 continue
-            if type_str not in ("coder", "searcher", "general"):
+            if type_str not in ("coder", "searcher", "general", "simulator"):
                 type_str = "general"
             steps.append(PlanStep(task=task, subagent_type=type_str))
             if len(steps) >= self.max_steps:

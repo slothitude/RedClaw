@@ -14,9 +14,14 @@ var _sidebar: VBoxContainer
 var _chat_panel: VBoxContainer
 var _tool_panel: VBoxContainer
 var _wiki_panel: VBoxContainer
+var _sim_panel: VBoxContainer
+var _sim_controller: Node2D
 var _right_tabs: TabContainer
 var _status_bar: HBoxContainer
 var _settings_dialog: AcceptDialog
+var _chat_sidebar: VBoxContainer
+var _chat_toggle_btn: Button
+var _chat_visible: bool = true
 
 var _input_tokens: int = 0
 var _output_tokens: int = 0
@@ -70,7 +75,7 @@ func _build_layout() -> void:
 	main_vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(main_vbox)
 
-	# HSplit: sidebar | chat | right panel (TabContainer)
+	# HSplit: [sidebar | collapsible_chat | sim_panel | right_tabs]
 	var hsplit: HSplitContainer = HSplitContainer.new()
 	hsplit.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main_vbox.add_child(hsplit)
@@ -82,10 +87,26 @@ func _build_layout() -> void:
 	_sidebar.settings_changed.connect(_on_sidebar_settings_changed)
 	_sidebar.session_selected.connect(_on_session_selected)
 
-	# Chat panel
+	# Collapsible chat sidebar
+	_chat_sidebar = VBoxContainer.new()
+	_chat_sidebar.custom_minimum_size = Vector2(300, 0)
+	hsplit.add_child(_chat_sidebar)
+
+	_chat_toggle_btn = Button.new()
+	_chat_toggle_btn.text = "v Chat"
+	_chat_toggle_btn.flat = true
+	_chat_toggle_btn.pressed.connect(_on_toggle_chat)
+	_chat_sidebar.add_child(_chat_toggle_btn)
+
 	_chat_panel = CHAT_PANEL_SCENE.instantiate()
-	hsplit.add_child(_chat_panel)
+	_chat_sidebar.add_child(_chat_panel)
 	_chat_panel.setup(_agent_bridge)
+
+	# Simulation panel (center)
+	_sim_panel = VBoxContainer.new()
+	_sim_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sim_panel.set_script(load("res://ui/sim_panel.gd"))
+	hsplit.add_child(_sim_panel)
 
 	# Right panel: TabContainer with Tool Output + Wiki tabs
 	_right_tabs = TabContainer.new()
@@ -101,6 +122,9 @@ func _build_layout() -> void:
 	_wiki_panel.setup(_agent_bridge)
 
 	hsplit.add_child(_right_tabs)
+
+	# Setup sim panel with bridge
+	_sim_panel.setup(_agent_bridge)
 
 	# Status bar (built inline since we add plan_label)
 	_status_bar = HBoxContainer.new()
@@ -124,6 +148,14 @@ func _build_layout() -> void:
 	plan_label.text = ""
 	plan_label.add_theme_color_override("font_color", Color(0.9, 0.7, 0.1))
 	_status_bar.add_child(plan_label)
+
+	# Chat toggle button in status bar
+	var chat_toggle_status: Button = Button.new()
+	chat_toggle_status.name = "ChatToggle"
+	chat_toggle_status.text = "Chat"
+	chat_toggle_status.flat = true
+	chat_toggle_status.pressed.connect(_on_toggle_chat)
+	_status_bar.add_child(chat_toggle_status)
 
 	var perm_label: Label = Label.new()
 	perm_label.name = "PermLabel"
@@ -258,6 +290,16 @@ func _update_status(status: String, model: String) -> void:
 		if model != "":
 			text += " | " + model
 		status_label.text = text
+
+
+func _on_toggle_chat() -> void:
+	_chat_visible = not _chat_visible
+	_chat_panel.visible = _chat_visible
+	_chat_toggle_btn.text = ("v Chat" if _chat_visible else "> Chat")
+	if _chat_toggle_btn.text == "v Chat":
+		_chat_toggle_btn.text = "▾ Chat"
+	else:
+		_chat_toggle_btn.text = "▸ Chat"
 
 
 func _fmt_tokens(n: int) -> String:

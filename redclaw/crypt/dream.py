@@ -156,7 +156,7 @@ class DreamSynthesizer:
         # Load current wisdom
         dharma = crypt.load_dharma()
         bloodlines: dict[str, str] = {}
-        for bl_type in ("coder", "searcher", "general"):
+        for bl_type in ("coder", "searcher", "general", "simulator"):
             from redclaw.runtime.subagent_types import SubagentType
             sa_type = SubagentType(bl_type)
             wisdom = crypt.load_bloodline_wisdom(sa_type)
@@ -192,6 +192,7 @@ class DreamSynthesizer:
             "=== CODER ===\n<bullets>\n"
             "=== SEARCHER ===\n<bullets>\n"
             "=== GENERAL ===\n<bullets>\n"
+            "=== SIMULATOR ===\n<bullets about simulation entity placement, stability, and physics tuning>\n"
         )
 
         # LLM call — collect streamed text
@@ -260,7 +261,7 @@ class DreamSynthesizer:
 
         # Update bloodlines — REPLACE entirely with dream-synthesized content
         from redclaw.runtime.subagent_types import SubagentType
-        for bl_name in ("coder", "searcher", "general"):
+        for bl_name in ("coder", "searcher", "general", "simulator"):
             key = bl_name
             if key in sections and sections[key]:
                 try:
