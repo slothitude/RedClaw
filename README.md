@@ -62,23 +62,155 @@ All interfaces share the same LLM client, conversation loop, tools, session pers
 
 ## Features
 
-- **Provider-agnostic** — OpenAI, Anthropic, Ollama, Groq, DeepSeek, OpenRouter, ZAI, or custom endpoints
-- **6 core tools** — bash, read_file, write_file, edit_file, glob_search, grep_search
-- **Web tools** — web search (SearXNG) and web reader
-- **Subagents with bloodlines** — typed workers (coder, searcher, general) with retry-with-reflection and wisdom inheritance
-- **AGI mode** — autonomous goal-pursuing executive with SOUL constitution, evolving DNA traits, dream synthesis, and karma alignment
-- **Skills system** — agent-manageable YAML+Python plugins
-- **MCP client** — connect external tool servers via SSE protocol
-- **Persistent memory** — frozen snapshot pattern with security scanning
-- **Session persistence** — JSONL conversation history
-- **Compaction** — deterministic or LLM-based summarization
-- **Permission tiers** — ask, read_only, workspace_write, danger_full_access
-- **Hooks** — pre/post tool shell hooks for custom automation
-- **Content security** — injection, exfiltration, and invisible unicode scanning
-- **Assistant mode** — tasks, notes, reminders, scheduler, briefings with configurable persona name
-- **Knowledge graph** — Cognee-backed persistent knowledge (add, cognify, search, memify, prune)
-- **Docker support** — multi-stage build with docker-compose
+### Core Agent
+- **Provider-agnostic** — OpenAI, Anthropic, Ollama, Groq, DeepSeek, OpenRouter, ZAI, or any OpenAI-compatible endpoint via `--base-url`
+- **Streaming** — real-time SSE streaming from all providers; interfaces receive text deltas, tool events, and usage callbacks
+- **Session persistence** — JSONL conversation history saved to `.redclaw/` with metadata; resume sessions with `--session`
+- **Compaction** — deterministic or LLM-based conversation summarization to stay within context limits
+- **Permission tiers** — 4-level policy: `ask`, `read_only`, `workspace_write`, `danger_full_access`
+- **Plan mode** — toggle read-only planning with `/plan`, execute with `/go`; context preserved across switches
+
+### Tools (14 built-in)
+- **bash** — execute shell commands via async subprocess with timeout
+- **read_file** — read file contents with optional line range support
+- **write_file** — atomic file writes (tempfile + os.replace)
+- **edit_file** — exact string replacement in files
+- **glob_search** — find files by glob pattern
+- **grep_search** — search file contents by regex
+- **web_search** — web search via SearXNG
+- **web_reader** — fetch and read web pages
+- **memory** — persistent memory with frozen snapshot pattern and security scanning
+- **subagent** — delegate tasks to isolated sub-agents with bloodline wisdom inheritance
+- **wiki** — LLM-compiled markdown knowledge base (ingest, query, lint, stats)
+- **task / note / reminder** — proactive personal assistant tools (requires `--assistant`)
+- **knowledge** — Cognee-backed knowledge graph (add, cognify, search, memify, prune) (requires `--knowledge`)
+- **execute_goal** — autonomous goal management (requires `--agi`)
+
+### Named Toolsets
+Predefined tool collections with recursive include resolution:
+
+| Toolset | Tools |
+|---------|-------|
+| `core` | read_file, write_file, edit_file, glob_search, grep_search |
+| `shell` | bash |
+| `web` | web_search, web_reader |
+| `memory` | memory |
+| `skills` | skills_list, skill_view, skill_manage |
+| `subagent` | subagent |
+| `full` | includes core, shell, web |
+| `readonly` | read_file, glob_search, grep_search |
+| `assistant` | task, note, reminder |
+| `knowledge` | knowledge |
+| `agi` | execute_goal |
+| `wiki` | wiki |
+
+### Subagents with Bloodlines
+- **3 bloodline types** — CODER (core+shell), SEARCHER (core+web), GENERAL (all non-excluded)
+- **Retry-with-reflection** — up to 3 retries with accumulated failure context; timeout escalates per attempt
+- **Wisdom inheritance** — subagents inherit accumulated bloodline wisdom from previous runs
+- **Batch mode** — up to 3 concurrent subtasks via semaphore
+- **Depth limiting** — max 2 levels of nesting; restricted toolset prevents recursion
+- **Entombment** — results captured for future learning via the Crypt system
+
+### Crypt (Wisdom Inheritance)
+- **Bloodlines** — per-type wisdom files (CODER, SEARCHER, GENERAL) accumulated from subagent runs
+- **Dharma** — cross-cutting patterns discovered across all bloodlines
+- **Entombed records** — individual subagent results with extracted lessons
+- **Metrics** — aggregate success/failure counters per bloodline
+- **DNA traits** — evolving per-bloodline traits (speed, accuracy, creativity, persistence) that influence subagent behavior (--agi only)
+- **Dream synthesis** — periodic LLM-powered consolidation of entombed records into dharma and bloodline wisdom (--agi only)
+- **Karma observer** — deterministic alignment scoring against SOUL principles (--agi only)
+- Storage: `~/.redclaw/crypt/`
+
+### AGI Mode (`--agi`)
+Autonomous goal-pursuing agent with a complete self-governance stack:
+
+- **SOUL constitution** — loaded from `~/.redclaw/SOUL.md` with SHA256 integrity check; defines immutable principles
+- **Autonomous executive** — background goal queue with plan/execute/evaluate loop
+- **DNA evolution** — per-bloodline traits that evolve based on outcomes, producing timeout/turn/prompt modifiers
+- **Dream synthesis** — LLM-powered consolidation fired after 10+ entombments with 30min cooldown
+- **Karma alignment** — scores every action against SOUL principles; visible via `/karma`
+- **Event bus** — in-memory pub/sub for AGI coordination events
+- **Context budget** — token-aware AGI state injection (3000 char limit)
+- Slash commands: `/goals`, `/karma`, `/reflect`
+- All AGI code gated behind `--agi` flag — zero impact on existing modes
+
+### LLM Wiki (`--wiki`)
+LLM-compiled markdown wiki that replaces query-time RAG with accumulated knowledge:
+
+- **Ingest** — fetch source (URL or local file), LLM compiles into structured, interlinked markdown pages
+- **Query** — read index, LLM picks relevant pages, reads them, synthesizes answer with citations
+- **Lint** — check index consistency, resolve [[wikilinks]], report broken references
+- **Stats** — page count, word count, last ingest time
+- **System prompt injection** — wiki index loaded at session start as `<wiki_index>` block
+- Storage: `~/.redclaw/wiki/` with `raw/` (immutable sources) and `wiki/` (compiled pages)
+
+### Skills System
+Agent-manageable YAML+Python plugins discovered from `--skills-dir`, `<cwd>/skills/`, or `~/.redclaw/skills/`:
+- **Manifest formats** — `SKILL.md` (YAML frontmatter + markdown) or `skill.yaml`
+- **Agent CRUD** — `skills_list`, `skill_view`, `skill_manage` tools let the agent discover, inspect, and modify skills
+- **Security scanner** — checks for injection patterns, tool conflicts, and homoglyph attacks
+
+### MCP Client
+Model Context Protocol client for connecting external tool servers:
+- SSE transport with persistent connections
+- JSON-RPC request/response protocol
+- Initialize handshake → endpoint discovery → tool discovery
+- Tools registered with `mcp__server__tool` naming convention
+- Configured via `--mcp-servers` CLI flag
+
+### Local Servers
+`servers/` directory contains MCP servers for local capabilities:
+- **TTS server** — text-to-speech with Coqui XTTS-v2 (voice cloning) or edge-tts fallback
+- **STT server** — speech-to-text with Whisper base model
+- **Web reader server** — headless browser (Playwright) + html2text for rich page extraction
+- **Streaming TTS** — sentence-level pipelining for real-time speech synthesis
+- **Start all** — `servers/start_all.py` launches everything at once
+
+### Assistant Mode (`--assistant`)
+Proactive personal assistant for Telegram mode:
+- **Tasks** — add, list, update, delete, search
+- **Notes** — add, list, view, delete, search
+- **Reminders** — schedule with due-date checking
+- **Configurable persona** — custom name via `AssistantConfig.persona_name`
+- **Briefings & scheduler** — proactive summaries and scheduled actions
+
+### Knowledge Graph (`--knowledge`)
+Cognee-backed persistent knowledge graph memory:
+- **Tools** — `add` (store facts), `cognify` (process into graph), `search` (query), `memify` (summarize to memory), `prune` (remove old entries)
+- Storage: `~/.redclaw/knowledge/`
+- Requires `cognee` optional dependency and separate LLM API key
+
+### Token Saver / Local Model
+- **Local inference** — route predictions through a local BitNet model to reduce API costs
+- CLI flags: `--local-model`, `--bitnet-bin`, `--token-saver`
+- Wires into `ConversationRuntime` and Crypt (self-learner retrain after entombment)
+
+### Security
+- **Content scanning** — prompt injection detection, data exfiltration detection, invisible unicode scanning
+- **Permission tiers** — tools gated by 4-level policy (ask → read_only → workspace_write → danger_full_access)
+- **Skill security** — scanner checks SKILL.md files for injection, tool conflicts, homoglyphs
+- **Memory security** — all memory stores scanned for injection and exfiltration patterns
+- **SOUL integrity** — SHA256 hash check ensures constitutional values haven't been tampered with
+
+### CLAW.md Discovery
+Project-specific instructions loaded automatically:
+- Searches from working directory up to home directory for `CLAW.md` or `.claw.md`
+- Injected into system prompt alongside memory snapshot and wiki index
+- Enables per-project customization without code changes
+
+### Hooks
+Pre/post tool shell hooks for custom automation:
+- **Pre-hooks** — receive tool name and input via env vars; non-zero exit blocks the tool call
+- **Post-hooks** — receive tool name and result (truncated to 4096 chars)
+- 30s timeout per hook execution
+- Configured via `HookConfig` with separate `pre_tool` and `post_tool` command lists
+
+### Deployment
+- **Docker support** — multi-stage `Dockerfile` + `docker-compose.yml` for containerized deployment
 - **Standalone exe** — single-file Windows executable, no Python needed
+- **Force update** — `--update` flag pulls latest and reinstalls
+- **Auto-updater** — frozen exe checks GitHub releases for new versions
 
 ## Install
 
@@ -168,7 +300,7 @@ redclaw --permission-mode read_only
 | `--permission-mode` | `ask`, `read_only`, `workspace_write`, `danger_full_access` |
 | `--session` | Resume a session ID |
 | `--working-dir` | Working directory (default: cwd) |
-| `--mode` | `repl`, `rpc`, `telegram`, `webchat`, or `dashboard` |
+| `--mode` | `repl`, `rpc`, `telegram`, `webchat`, `dashboard`, or `agi` |
 | `--mcp-servers` | MCP server URLs (space-separated) |
 | `--tts-url` | TTS server URL |
 | `--stt-url` | STT server URL |
@@ -180,12 +312,20 @@ redclaw --permission-mode read_only
 | `--knowledge-api-key` | LLM API key for Cognee processing |
 | `--agi` | Enable AGI mode — autonomous goals, SOUL, DNA traits, dream synthesis, karma |
 | `--agi-interval` | AGI executive loop interval in seconds (default: 60) |
+| `--wiki` | Enable LLM-compiled wiki knowledge base |
+| `--wiki-dir` | Wiki root directory (default: `~/.redclaw/wiki`) |
+| `--local-model` | Path to local model binary |
+| `--bitnet-bin` | Path to BitNet binary |
+| `--token-saver` | Enable token-saving via local model predictions |
+| `--update` | Force update: git pull + pip install |
 
 ### Slash Commands (REPL)
 
 | Command | Description |
 |---|---|
 | `/help` | Show available commands |
+| `/plan` | Enter plan mode (read-only tools, plan-focused prompt) |
+| `/go` | Exit plan mode, restore full tools and execute |
 | `/compact` | Compact conversation history |
 | `/clear` | Clear session history |
 | `/usage` | Show token usage and cost |
@@ -216,10 +356,11 @@ redclaw --permission-mode read_only
 | `web_reader` | read only | Fetch and read web pages |
 | `memory` | workspace write | Store, recall, and search persistent memories |
 | `subagent` | workspace write | Delegate tasks to isolated sub-agents |
-| `task` | workspace write | Manage to-do tasks (add, list, update, delete, search) |
-| `note` | workspace write | Manage notes (add, list, view, delete, search) |
-| `reminder` | workspace write | Manage reminders with scheduling and due-check |
-| `knowledge` | workspace write | Cognee knowledge graph (add, cognify, search, memify, prune) |
+| `wiki` | workspace write | LLM-compiled wiki (ingest, query, lint, stats) — requires `--wiki` |
+| `task` | workspace write | Manage to-do tasks (add, list, update, delete, search) — requires `--assistant` |
+| `note` | workspace write | Manage notes (add, list, view, delete, search) — requires `--assistant` |
+| `reminder` | workspace write | Manage reminders with scheduling and due-check — requires `--assistant` |
+| `knowledge` | workspace write | Cognee knowledge graph (add, cognify, search, memify, prune) — requires `--knowledge` |
 | `execute_goal` | workspace write | AGI goal management (add, list, status, cancel) — requires `--agi` |
 
 ## Architecture
@@ -229,11 +370,13 @@ redclaw/
   api/            Provider-agnostic LLM client, SSE parser, provider registry
   runtime/        Conversation loop, session, compaction, permissions, hooks,
                   subagents (with bloodlines, retry, crypt wisdom), prompt builder,
+                  token saver, local LLM, plan mode,
                   AGI: soul, event_bus, autonomous executive, context budget
   assistant/      Personal assistant: tasks, notes, reminders, scheduler, briefings
   memory_graph/   Cognee-backed knowledge graph memory
+  wiki/           LLM-compiled markdown wiki: types, manager, tools
   tools/          Core tools, toolsets, memory, content scanning, assistant tools,
-                  AGI goal management tool
+                  AGI goal management tool, wiki dispatch
   skills/         Skill discovery, loading, agent-managed CRUD, security scanner
   crypt/          Wisdom inheritance: bloodlines, entombment, dharma, metrics,
                   AGI: DNA traits, dream synthesis, karma observer
@@ -245,7 +388,7 @@ redclaw/
   webchat.py      HTTP/WebSocket chat server
   dashboard.py    Flask config GUI and process launcher
 
-servers/          Local MCP servers (TTS, STT, Web Reader)
+servers/          Local MCP servers (TTS with streaming, STT, Web Reader)
 godot/            Godot 4.6 GUI project
   scripts/        Agent bridge, session manager, settings
   ui/             Chat panel, sidebar, tool panel, status bar
