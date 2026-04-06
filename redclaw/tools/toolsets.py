@@ -60,6 +60,10 @@ BUILTIN_TOOLSETS: dict[str, Toolset] = {
         name="agi",
         tools=["execute_goal"],
     ),
+    "wiki": Toolset(
+        name="wiki",
+        tools=["wiki"],
+    ),
 }
 
 

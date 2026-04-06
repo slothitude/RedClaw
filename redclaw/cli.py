@@ -86,6 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
     adv.add_argument("--knowledge", action="store_true", help="Enable Cognee knowledge graph memory")
     adv.add_argument("--knowledge-dir", default=None, help="Knowledge graph data directory (default: ~/.redclaw/knowledge)")
     adv.add_argument("--knowledge-api-key", default=None, help="LLM API key for Cognee entity extraction")
+    adv.add_argument("--wiki", action="store_true", help="Enable LLM-compiled wiki knowledge base")
+    adv.add_argument("--wiki-dir", default=None, help="Wiki root directory (default: ~/.redclaw/wiki)")
 
     # MCP / Voice
     mcp = p.add_argument_group("MCP")
@@ -139,6 +141,8 @@ async def _run_repl(
     local_model: Path | None = None,
     bitnet_bin: Path | None = None,
     token_saver_flag: bool = False,
+    wiki_enabled: bool = False,
+    wiki_dir: str | None = None,
 ) -> None:
     """Run the interactive REPL."""
     # Default to RedClaw home if no working dir specified
@@ -209,6 +213,31 @@ async def _run_repl(
             bitnet_bin=bitnet_bin,
             enabled=True,
         ))
+
+    # Wiki system
+    if wiki_enabled:
+        from redclaw.wiki.tools import execute_wiki
+        from redclaw.api.types import PermissionLevel
+        from redclaw.tools.registry import ToolSpec
+        tools.register_tool(ToolSpec(
+            name="wiki",
+            description="LLM-compiled wiki knowledge base. Actions: ingest (compile a source into wiki pages), query (ask a question using wiki pages), lint (health check), stats.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Operation: ingest, query, lint, stats"},
+                    "source": {"type": "string", "description": "URL or file path to ingest (for 'ingest')"},
+                    "topic": {"type": "string", "description": "Topic category (default: general)", "default": "general"},
+                    "question": {"type": "string", "description": "Question to answer (for 'query')"},
+                },
+                "required": ["action"],
+            },
+            permission=PermissionLevel.WORKSPACE_WRITE,
+            execute=lambda **kw: execute_wiki(
+                wiki_dir=wiki_dir, client=client, provider=provider, model=model, **kw
+            ),
+        ))
+        console.print(f"[dim]Wiki enabled — {wiki_dir or str(Path.home() / '.redclaw' / 'wiki')}[/]")
 
     # Subagent system
     subagent_spawner = None
@@ -311,6 +340,7 @@ async def _run_repl(
         soul_text=soul_text,
         agi_context=agi_context,
         token_saver=token_saver,
+        wiki_dir=wiki_dir if wiki_enabled else None,
     )
 
     console.print(f"[bold red]RedClaw[/] {provider_name}/{model}")
@@ -735,6 +765,8 @@ def main() -> int | None:
             local_model=args.local_model,
             bitnet_bin=args.bitnet_bin,
             token_saver_flag=args.token_saver,
+            wiki_enabled=args.wiki,
+            wiki_dir=args.wiki_dir,
         ))
     else:
         asyncio.run(_run_repl(
@@ -755,6 +787,8 @@ def main() -> int | None:
             local_model=args.local_model,
             bitnet_bin=args.bitnet_bin,
             token_saver_flag=args.token_saver,
+            wiki_enabled=args.wiki,
+            wiki_dir=args.wiki_dir,
         ))
 
     return 0

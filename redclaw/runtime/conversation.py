@@ -90,6 +90,7 @@ class ConversationRuntime:
         soul_text: str = "",
         agi_context: str = "",
         token_saver: Any | None = None,
+        wiki_dir: str | None = None,
     ) -> None:
         self.client = client
         self.provider = provider
@@ -111,6 +112,7 @@ class ConversationRuntime:
         self._soul_text = soul_text
         self._agi_context = agi_context
         self._token_saver = token_saver
+        self._wiki_dir = wiki_dir
         self._original_tools = tools
         self._original_system_prompt = system_prompt
         self._plan_mode = False
@@ -121,6 +123,13 @@ class ConversationRuntime:
             memory_snapshot = ""
             if self.memory:
                 memory_snapshot = self.memory.snapshot
+            wiki_index = ""
+            if self._wiki_dir:
+                try:
+                    from redclaw.wiki.manager import WikiManager
+                    wiki_index = WikiManager(self._wiki_dir).get_index_text()
+                except Exception:
+                    pass
             self._system_prompt = build_system_prompt(
                 self.working_dir,
                 memory_snapshot=memory_snapshot,
@@ -129,6 +138,7 @@ class ConversationRuntime:
                 assistant_context=self._assistant_context,
                 soul_text=self._soul_text,
                 agi_context=self._agi_context,
+                wiki_index=wiki_index,
             )
         return self._system_prompt
 
