@@ -12,6 +12,8 @@ signal turn_finished(error: String)
 signal error_occurred(message: String)
 signal connection_status_changed(connected: bool)
 signal ready_received(session_id: String, model: String, provider: String)
+signal plan_mode_changed(enabled: bool)
+signal wiki_result(answer: String)
 
 var _pid: int = -1
 var _stdin_pipe: FileAccess = null
@@ -23,6 +25,9 @@ var _connected: bool = false
 
 # Buffer for incomplete lines from stdout
 var _line_buffer: String = ""
+
+# Pending JSON-RPC response callbacks keyed by request id
+var _pending_callbacks: Dictionary = {}
 
 
 var is_connected: bool:
@@ -130,6 +135,26 @@ func set_provider(provider: String, base_url: String = "") -> void:
 	_send_request("set_provider", params)
 
 
+## Toggle plan mode.
+func plan_mode(enabled: bool) -> void:
+	_send_request("plan_mode", {"enabled": enabled})
+
+
+## Query the wiki.
+func wiki_query(question: String) -> void:
+	_send_request("wiki_query", {"question": question})
+
+
+## Get wiki stats.
+func wiki_stats() -> void:
+	_send_request("wiki_stats", {})
+
+
+## Ingest into the wiki.
+func wiki_ingest(source: String, topic: String = "general") -> void:
+	_send_request("wiki_ingest", {"source": source, "topic": topic})
+
+
 ## Send a JSON-RPC request.
 func _send_request(method: String, params: Dictionary = {}) -> void:
 	_request_id += 1
@@ -196,9 +221,13 @@ func _handle_line(line: String) -> void:
 	if obj == null:
 		return
 
-	# Handle JSON-RPC responses ( have "result" or "error")
+	# Handle JSON-RPC responses (have "result" or "error")
 	if obj.has("id") and (obj.has("result") or obj.has("error")):
-		# JSON-RPC response — we don't need to do much with these for now
+		# Check for wiki_query response
+		if obj.has("result") and obj["result"] is Dictionary:
+			var res: Dictionary = obj["result"]
+			if res.has("answer"):
+				wiki_result.emit(res["answer"])
 		return
 
 	# Handle streaming events
@@ -237,3 +266,5 @@ func _handle_line(line: String) -> void:
 			_running = false
 		"error":
 			error_occurred.emit(obj.get("message", "Unknown error"))
+		"plan_mode_changed":
+			plan_mode_changed.emit(obj.get("enabled", false))
