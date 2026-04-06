@@ -110,7 +110,10 @@ def _do_update(download_url: str, new_version: str) -> None:
     """Download new exe and perform atomic swap."""
     exe_path = Path(sys.executable)
     install_dir = exe_path.parent
-    new_exe = install_dir / "redclaw_new.exe"
+
+    # Download to temp dir — avoids permission issues with C:\Program Files
+    tmp_dir = Path(tempfile.gettempdir())
+    new_exe = tmp_dir / "redclaw_update.exe"
 
     # Download
     console.print(f"[dim]Downloading v{new_version}...[/]")
@@ -118,6 +121,7 @@ def _do_update(download_url: str, new_version: str) -> None:
         urllib.request.urlretrieve(download_url, str(new_exe))
     except Exception as e:
         console.print(f"[red]Download failed: {e}[/]\n")
+        new_exe.unlink(missing_ok=True)
         return
 
     size_mb = new_exe.stat().st_size / (1024 * 1024)
@@ -129,23 +133,52 @@ def _do_update(download_url: str, new_version: str) -> None:
 
     console.print(f"[dim]Downloaded {size_mb:.1f} MB[/]")
 
-    # Swap: spawn a cmd that waits for us to exit, then replaces the exe
-    # ping -n 3 waits ~2 seconds
-    swap_cmd = (
-        f'ping -n 3 127.0.0.1 >nul 2>&1 & '
-        f'move /y "{new_exe}" "{exe_path}" >nul 2>&1'
-    )
+    # Check if install dir is writable
+    needs_elevation = not os.access(str(install_dir), os.W_OK)
 
-    try:
-        subprocess.Popen(
-            f'cmd /c "{swap_cmd}"',
-            shell=True,
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+    if needs_elevation:
+        # Use a two-phase swap: temp -> backup in install dir -> replace
+        # The backup write will trigger UAC if needed via runas
+        backup_exe = install_dir / "redclaw_old.exe"
+        # Phase 1: move running exe aside, move new into place
+        # Use a single cmd script to avoid race conditions
+        swap_script = tmp_dir / "redclaw_swap.cmd"
+        swap_script.write_text(
+            f'@echo off\n'
+            f'ping -n 3 127.0.0.1 >nul 2>&1\n'
+            f'move /y "{exe_path}" "{backup_exe}" >nul 2>&1\n'
+            f'move /y "{new_exe}" "{exe_path}" >nul 2>&1\n'
+            f'del /f /q "{backup_exe}" >nul 2>&1\n'
+            f'del /f /q "{swap_script}" >nul 2>&1\n'
         )
-    except Exception as e:
-        console.print(f"[red]Failed to start update: {e}[/]\n")
-        new_exe.unlink(missing_ok=True)
-        return
+        try:
+            # ShellExecute with "runas" triggers UAC elevation
+            import ctypes
+            ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", "cmd.exe",
+                f'/c "{swap_script}"',
+                None, 0,  # SW_HIDE
+            )
+        except Exception as e:
+            console.print(f"[red]Failed to start elevated update: {e}[/]\n")
+            new_exe.unlink(missing_ok=True)
+            return
+    else:
+        # No elevation needed — simple swap
+        swap_cmd = (
+            f'ping -n 3 127.0.0.1 >nul 2>&1 & '
+            f'move /y "{new_exe}" "{exe_path}" >nul 2>&1'
+        )
+        try:
+            subprocess.Popen(
+                f'cmd /c "{swap_cmd}"',
+                shell=True,
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+            )
+        except Exception as e:
+            console.print(f"[red]Failed to start update: {e}[/]\n")
+            new_exe.unlink(missing_ok=True)
+            return
 
     console.print(f"[bold green]Update to v{new_version} installed.[/]")
     console.print("[dim]Restart RedClaw to use the new version.[/]\n")
