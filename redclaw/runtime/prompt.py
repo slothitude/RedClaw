@@ -17,6 +17,7 @@ def build_system_prompt(
     soul_text: str = "",
     agi_context: str = "",
     local_model_active: bool = False,
+    wiki_index: str = "",
 ) -> str:
     """Build the system prompt with context."""
     cwd = working_dir or str(Path.cwd())
@@ -98,6 +99,10 @@ def build_system_prompt(
     # Memory snapshot
     if memory_snapshot:
         parts.append(f"\nMemory (frozen snapshot for this session):\n{memory_snapshot}")
+
+    # Wiki index
+    if wiki_index:
+        parts.append(f"\n<wiki_index>\n{wiki_index}\n</wiki_index>")
 
     # Skills guidance
     if skills_guidance:
