@@ -99,7 +99,7 @@ MCP Client (redclaw/mcp_client.py)
 
 ### CLI flags
 
-Key flags: `--provider`, `--model`, `--base-url`, `--permission-mode`, `--session`, `--working-dir`, `--mode`, `--mcp-servers`, `--tts-url`, `--stt-url`, `--search-url`, `--skills-dir`, `--assistant`, `--knowledge`, `--knowledge-dir`, `--knowledge-api-key`, `--agi`, `--agi-interval`, `--update`
+Run `python -m redclaw --help` for full flag list. Version is maintained in both `redclaw/__init__.py` (`__version__`) and `pyproject.toml` (`version`) — keep in sync.
 
 ### Plan Mode
 
@@ -122,21 +122,7 @@ Toggleable read-only planning in the REPL via `ConversationRuntime.set_plan_mode
 
 ### Skills System
 
-Skills are agent-manageable YAML+Python plugins discovered from three paths:
-1. `--skills-dir` CLI flag (highest priority)
-2. `<cwd>/skills/` (project-local skills)
-3. `~/.redclaw/skills/` (user-global skills)
-
-**Manifest formats:**
-- `SKILL.md` — YAML frontmatter (`---` delimited) + markdown body with instructions
-- `skill.yaml` — Pure YAML manifest
-
-**Key classes:**
-- `SkillBase` — Abstract base class for skill implementations
-- `SkillManifest` — Parsed manifest data (name, description, tools, instructions)
-- `SkillTool` — Tool definition exported by a skill
-
-**Agent tools:** `skills_list`, `skill_view`, `skill_manage` (create/update/patch/delete)
+Agent-manageable YAML+Python plugins discovered from `--skills-dir`, `<cwd>/skills/`, or `~/.redclaw/skills/`. Manifest formats: `SKILL.md` (YAML frontmatter + markdown) or `skill.yaml`. Key classes: `SkillBase`, `SkillManifest`, `SkillTool`. Agent tools: `skills_list`, `skill_view`, `skill_manage`.
 
 ### MCP Client
 
@@ -149,13 +135,7 @@ Model Context Protocol client using SSE transport:
 
 ### Memory System
 
-Persistent memory with frozen snapshot pattern:
-- `MemoryManager` loads MEMORY.md + USER.md at session start → frozen snapshot injected into system prompt
-- Live mutations via tool calls (`store`, `recall`, `search`) persist to disk immediately via atomic writes
-- Snapshot never changes mid-session (preserves prefix cache)
-- Format: markdown with `# Section` headers as categories, bullet entries
-- Security: all content scanned for injection, exfiltration, and invisible unicode before storing
-- Storage: `~/.redclaw/memory/`
+Persistent memory with frozen snapshot pattern: `MemoryManager` loads MEMORY.md + USER.md at session start, snapshot injected into system prompt. Live mutations persist immediately but snapshot stays frozen (preserves prefix cache). Storage: `~/.redclaw/memory/`.
 
 ### Subagent System
 
@@ -236,14 +216,7 @@ Applied to memory stores and skill content.
 
 ### Assistant Subsystem
 
-`redclaw/assistant/` — proactive personal assistant features for Telegram mode:
-- **Config** — `AssistantConfig` dataclass with JSON persistence (`~/.redclaw/assistant/config.json`), supports `persona_name`, timezone, briefing preferences
-- **Tasks** — `TaskStore` with add/list/update/delete/search (JSONL persistence in `~/.redclaw/assistant/tasks.jsonl`)
-- **Notes** — `NoteStore` with CRUD + search (JSONL persistence in `~/.redclaw/assistant/notes.jsonl`)
-- **Reminders** — `ReminderStore` with scheduling, pending queries, due-check (JSONL persistence)
-- **Agent tools** — `task`, `note`, `reminder` registered via `redclaw/tools/assistant_tools.py`
-- **Persona name** — configured via `persona_name` in config; prepended to assistant context so the LLM identifies by that name
-- Enabled with `--assistant` CLI flag (Telegram mode only)
+`redclaw/assistant/` — proactive personal assistant for Telegram mode: tasks, notes, reminders, config with persona name. Agent tools: `task`, `note`, `reminder`. Enabled with `--assistant` CLI flag.
 
 ### Knowledge Graph
 
@@ -257,14 +230,44 @@ Applied to memory stores and skill content.
 ### Crypt (Wisdom Inheritance)
 
 `redclaw/crypt/` — accumulates lessons from subagent runs for future wisdom:
-- **Bloodlines** — per-type wisdom files (coder.md, searcher.md, general.md) with structured sections (Successful Patterns, Warnings, Tool Insights)
-- **Dharma** — living document of cross-cutting patterns across all bloodlines
-- **Entombed** — individual subagent records (JSON) with task, type, success, lessons, timestamp
-- **Metrics** — aggregate counters (tasks_total, success, failure, by type)
-- **DNA Traits** — evolving per-bloodline traits (speed, accuracy, creativity, persistence) that influence subagent behavior
-- **Dream Synthesis** — periodic LLM-powered consolidation of entombed records into refined dharma and bloodline wisdom
-- **Karma Observer** — deterministic alignment scoring against SOUL principles, publishes KARMA_ALERT on low streaks
-- Storage: `~/.redclaw/crypt/`, `~/.redclaw/crypt/dna/`
+- **Bloodlines** — per-type wisdom files (CODER, SEARCHER, GENERAL)
+- **Dharma** — cross-cutting patterns across all bloodlines
+- **Entombed** — individual subagent records with lessons
+- **Metrics** — aggregate success/failure counters
+- **DNA Traits** — evolving per-bloodline traits that influence subagent behavior
+- **Dream Synthesis** — periodic LLM-powered consolidation of entombed records
+- **Karma Observer** — deterministic alignment scoring against SOUL principles
+- Storage: `~/.redclaw/crypt/`
+
+### LLM Wiki (Planned)
+
+Replaces query-time RAG with an LLM-compiled markdown wiki. The LLM **compiles** raw source materials into structured, interlinked markdown pages, then **answers questions from the wiki** — accumulating knowledge instead of rediscovering it on every query.
+
+**Architecture:**
+- Module: `redclaw/wiki/` (manager, compiler, linter, query, schema, types)
+- Storage: `~/.redclaw/wiki/` with `raw/` (immutable sources) and `wiki/` (compiled pages)
+- Schema: `WIKI.md` (page types, citation rules, lint rules, query behavior)
+- Catalog: `wiki/index.md` (content-oriented page listing), `wiki/log.md` (append-only operation log)
+
+**New CLI flags:** `--wiki`, `--wiki-dir`, `--wiki-schema`, `--wiki-auto-ingest`
+**New slash commands:** `/wiki ingest|query|lint|status|sync`
+**New agent tools:** `wiki_ingest`, `wiki_query`, `wiki_compile`, `wiki_lint`, `wiki_log`
+
+**Integration hooks:**
+- **Dream synthesis** — wiki compiler mirrors `dream.py` LLM-powered compilation pattern
+- **Memory** — wiki pages inject as contextual memory at query time (same frozen snapshot pattern)
+- **Subagents** — parallel ingest via SEARCHER bloodline workers
+- **CLAW.md discovery** — `WIKI.md` uses same directory-walk discovery as CLAW.md
+- **Skills** — can ship as a loadable skill (`skills/wiki/SKILL.md`)
+- **Crypt** — wiki operations entombed as GENERAL bloodline; dream synthesis surfaces compilation patterns
+
+**Key design decisions:**
+- Plain markdown over Cognee — auditable, portable, no embeddings, no vector DB
+- `WIKI.md` separate from `CLAW.md` — knowledge structure vs. developer workflow
+- Index-first query — LLM reads index (~5K tokens), picks relevant pages, synthesizes with citations
+- Phase 1: minimal `wiki_ingest` + `wiki_query` tools. Phase 2: subagent workers, auto-lint, WIKI.md discovery. Phase 3: skill packaging, auto-ingest, cross-wiki backlinks.
+
+Full spec: `docs/llm-wiki-spec.md`
 
 ### AGI Executive (Active Autonomous Mode)
 
@@ -299,25 +302,20 @@ Activated via `--agi` CLI flag or mode chooser option 5. All AGI code is gated b
 
 **Components:**
 
-- **SOUL.md** (`soul.py`) — Constitutional value system: LEARNING > PERFORMANCE, UNDERSTANDING > MIMICRY, HONESTY > OPTIMIZATION, ALIGNMENT > AUTONOMY, PERSISTENCE > ELEGANCE. Loaded from `~/.redclaw/SOUL.md` or embedded defaults. SHA256 integrity check on first load.
-- **DNA Traits** (`dna.py`) — Per-bloodline evolving traits (SPEED, ACCURACY, CREATIVITY, PERSISTENCE, 0.0-1.0). Defaults: CODER=accuracy-heavy, SEARCHER=speed-heavy. Evolution via weighted moving average (alpha=0.3) after each entombment. Produces `TraitModifiers` (timeout_multiplier, max_turns_modifier, prompt_style: cautious/balanced/aggressive/creative).
-- **Dream Synthesis** (`dream.py`) — Periodic LLM-powered consolidation. Triggers after 10+ new entombments AND 30min cooldown. Loads new records, calls LLM to synthesize patterns, replaces dharma.md and merges into bloodline files.
-- **Event Bus** (`event_bus.py`) — In-memory publish/subscribe for AGI coordination. Event types: GOAL_CREATED, GOAL_PROGRESS, GOAL_COMPLETED, SUBAGENT_SPAWNED, SUBAGENT_COMPLETED, DREAM_COMPLETED, KARMA_ALERT. `EventLogger` subscriber persists significant events to `~/.redclaw/agi/events.jsonl` (10MB cap).
-- **Karma Observer** (`karma.py`) — Subscribes to events, evaluates alignment against SOUL principles via deterministic keyword matching (no LLM). Publishes KARMA_ALERT when alignment < 0.5 for 3+ consecutive actions. Records in `~/.redclaw/crypt/karma.jsonl`.
-- **Autonomous Executive** (`autonomous.py`) — Background asyncio task that: loads goals from queue, decomposes highest-priority goal into PlanSteps via LLM (max 10 steps, 512 tokens), executes steps via SubagentSpawner, evaluates completion via LLM (max 3 rounds). Failed goals are parked, not retried.
-- **AGI Tools** (`agi_tools.py`) — `execute_goal` tool registered for LLM: add, list, status, cancel goals during conversation.
-- **Context Budget** (`context_budget.py`) — Allocates char budgets per AGI section (SOUL: 500, wisdom: 800, DNA: 200, goals: 300, dharma: 400, reflection: 300). Proportionally reduces if total exceeds 3000 chars.
+- **SOUL.md** (`soul.py`) — Constitutional value system loaded from `~/.redclaw/SOUL.md`, SHA256 integrity check
+- **DNA Traits** (`dna.py`) — Per-bloodline evolving traits that produce timeout/turn/prompt modifiers
+- **Dream Synthesis** (`dream.py`) — Periodic LLM-powered consolidation of entombed records into dharma and bloodline wisdom
+- **Event Bus** (`event_bus.py`) — In-memory pub/sub for AGI coordination events
+- **Karma Observer** (`karma.py`) — Deterministic alignment scoring against SOUL principles
+- **Autonomous Executive** (`autonomous.py`) — Background goal queue with plan/execute/evaluate loop
+- **AGI Tools** (`agi_tools.py`) — `execute_goal` tool (add, list, status, cancel goals)
+- **Context Budget** (`context_budget.py`) — Token-aware AGI state injection (3000 char budget)
 
-**CLI flags:** `--agi` (enable), `--agi-interval` (loop interval in seconds, default 60)
+**CLI flags:** `--agi` (enable), `--agi-interval` (loop interval, default 60s)
 **Slash commands (AGI mode only):** `/goals`, `/karma`, `/reflect`
-**Storage:** `~/.redclaw/agi/` (goals.jsonl, events.jsonl), `~/.redclaw/crypt/dna/` (bloodline.json), `~/.redclaw/SOUL.md`
+**Storage:** `~/.redclaw/agi/`, `~/.redclaw/crypt/dna/`, `~/.redclaw/SOUL.md`
 
-**Safety:**
-- All AGI code gated behind `--agi` — no impact on existing modes
-- Goal decomposition capped at 512 tokens, dream synthesis at 2048, reflection cached 5min
-- Max 3 evaluation rounds per goal, max 10 PlanSteps, failed goals parked not retried
-- events.jsonl and karma.jsonl capped at 10MB, oldest pruned
-- Autonomous executive respects the same PermissionPolicy as the main agent
+**Safety:** All AGI code gated behind `--agi` — no impact on existing modes. Autonomous executive respects the same PermissionPolicy as the main agent. Goal decomposition and dream synthesis are token-capped; failed goals parked not retried.
 
 ## Conventions
 
@@ -329,3 +327,9 @@ Activated via `--agi` CLI flag or mode chooser option 5. All AGI code is gated b
 - Version is maintained in both `redclaw/__init__.py` (`__version__`) and `pyproject.toml` (`version`) — keep in sync
 - The Godot GUI project lives in `godot/` with GDScript in `godot/scripts/` and `godot/ui/`
 - Docker: multi-stage `Dockerfile` + `docker-compose.yml` for containerized deployment
+
+### Common Pitfalls
+
+- **Dashboard checkboxes** — must appear in both `getConfig()` and `setConfig()` JS functions, or they're silently dropped on save
+- **System prompt identity** — `prompt.py` base identity ("You are RedClaw") overrides anything added later in `assistant_context`; persona name is injected separately
+- **Version sync** — bump both `redclaw/__init__.__version__` and `pyproject.toml version` together
