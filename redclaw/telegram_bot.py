@@ -1066,9 +1066,12 @@ class RedClawTelegramBot:
             typing_task.cancel()
 
         # Send response
-        reply = collected_text.strip() if collected_text.strip() else "(no text response)"
+        reply = collected_text.strip()
         if summary.error:
-            reply = f"Error: {summary.error}\n\n{reply}"
+            reply = f"Error: {summary.error}" + (f"\n\n{reply}" if reply else "")
+        elif not reply:
+            tool_summary = ", ".join(tool_names) if tool_names else "none"
+            reply = f"(Agent ran tools: {tool_summary} but produced no text response)"
         await self._send_reply(update, reply)
 
         # Auto-send files created by tools as Telegram documents
