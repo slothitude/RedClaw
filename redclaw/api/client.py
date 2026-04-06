@@ -56,6 +56,7 @@ class LLMClient:
                     if response.status_code == 429:
                         # Rate limited — retry with backoff
                         error_body = await response.aread()
+                        last_exc = Exception(f"Rate limited (429): {error_body.decode(errors='replace')[:150]}")
                         backoff = min(INITIAL_BACKOFF * (BACKOFF_MULTIPLIER ** attempt), 30.0)
                         logger.warning(
                             "Rate limited (429), retry %d/%d in %.1fs: %s",
