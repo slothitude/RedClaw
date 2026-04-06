@@ -76,6 +76,11 @@ Crypt (redclaw/crypt/)
 MCP Client (redclaw/mcp_client.py)
     SSE-based protocol, persistent connections, JSON-RPC, tool discovery
     Tool registration with mcp__server__tool prefix convention
+    ↓
+Wiki (redclaw/wiki/)
+    types.py   → WikiPage, IngestRecord, WikiStats dataclasses
+    manager.py → WikiManager: ingest (LLM compile), query (index-first), lint, stats
+    tools.py   → execute_wiki dispatch + singleton get_wiki_manager()
 ```
 
 ### Key patterns
@@ -166,6 +171,7 @@ Named collections of tool names with recursive include resolution:
 | `assistant` | task, note, reminder |
 | `knowledge` | knowledge |
 | `agi` | execute_goal |
+| `wiki` | wiki |
 
 Custom toolsets can be registered at runtime.
 
@@ -186,8 +192,9 @@ Pre/post tool shell hooks via `HookRunner`:
 4. CLAW.md instructions — discovered from working dir up to home dir (CLAW.md or .claw.md)
 5. Extra instructions (e.g., subagent-specific guidance)
 6. Memory snapshot (frozen at session start)
-7. Skills guidance
-8. Tool usage guidelines
+7. Wiki index (injected as `<wiki_index>` block when `--wiki` enabled)
+8. Skills guidance
+9. Tool usage guidelines
 
 ### Channels
 
@@ -239,33 +246,40 @@ Applied to memory stores and skill content.
 - **Karma Observer** — deterministic alignment scoring against SOUL principles
 - Storage: `~/.redclaw/crypt/`
 
-### LLM Wiki (Planned)
+### LLM Wiki (Phase 1 Active)
 
-Replaces query-time RAG with an LLM-compiled markdown wiki. The LLM **compiles** raw source materials into structured, interlinked markdown pages, then **answers questions from the wiki** — accumulating knowledge instead of rediscovering it on every query.
+LLM-compiled markdown wiki that replaces query-time RAG with accumulated knowledge. The LLM **compiles** raw sources into structured, interlinked markdown pages, then **answers questions from the wiki** — knowledge persists across queries instead of being rediscovered each time.
 
-**Architecture:**
-- Module: `redclaw/wiki/` (manager, compiler, linter, query, schema, types)
-- Storage: `~/.redclaw/wiki/` with `raw/` (immutable sources) and `wiki/` (compiled pages)
-- Schema: `WIKI.md` (page types, citation rules, lint rules, query behavior)
-- Catalog: `wiki/index.md` (content-oriented page listing), `wiki/log.md` (append-only operation log)
+**Module:** `redclaw/wiki/`
+- `types.py` — `WikiPage`, `IngestRecord`, `WikiStats` dataclasses
+- `manager.py` — `WikiManager`: ingest (LLM compile), query (index-first), lint, stats
+- `tools.py` — `execute_wiki` dispatch function + `get_wiki_manager()` singleton
 
-**New CLI flags:** `--wiki`, `--wiki-dir`, `--wiki-schema`, `--wiki-auto-ingest`
-**New slash commands:** `/wiki ingest|query|lint|status|sync`
-**New agent tools:** `wiki_ingest`, `wiki_query`, `wiki_compile`, `wiki_lint`, `wiki_log`
+**Storage:** `~/.redclaw/wiki/` (configurable via `--wiki-dir`)
+- `raw/<topic>/<slug>.md` — immutable source material
+- `wiki/<topic>/<slug>.md` — LLM-compiled wiki pages
+- `wiki/index.md` — content-oriented page listing
+- `log.md` — append-only operation log
 
-**Integration hooks:**
-- **Dream synthesis** — wiki compiler mirrors `dream.py` LLM-powered compilation pattern
-- **Memory** — wiki pages inject as contextual memory at query time (same frozen snapshot pattern)
-- **Subagents** — parallel ingest via SEARCHER bloodline workers
-- **CLAW.md discovery** — `WIKI.md` uses same directory-walk discovery as CLAW.md
-- **Skills** — can ship as a loadable skill (`skills/wiki/SKILL.md`)
-- **Crypt** — wiki operations entombed as GENERAL bloodline; dream synthesis surfaces compilation patterns
+**CLI flags:** `--wiki` (enable), `--wiki-dir` (custom path)
 
-**Key design decisions:**
+**Agent tool:** `wiki` (single tool with action dispatch, mirrors `memory` pattern)
+- `wiki ingest` — fetch source (URL via httpx or local file), LLM compile into structured page, update index
+- `wiki query` — read index, LLM picks relevant pages, reads them, LLM synthesizes answer with citations
+- `wiki lint` — check index consistency, resolve [[wikilinks]], report broken references
+- `wiki stats` — page count, word count, last ingest time
+
+**System prompt injection:** Wiki index loaded at session start and injected as `<wiki_index>` block, giving the LLM awareness of available wiki content.
+
+**Design decisions:**
 - Plain markdown over Cognee — auditable, portable, no embeddings, no vector DB
-- `WIKI.md` separate from `CLAW.md` — knowledge structure vs. developer workflow
+- Single `wiki` tool with action dispatch (same pattern as `memory`) rather than separate tools
 - Index-first query — LLM reads index (~5K tokens), picks relevant pages, synthesizes with citations
-- Phase 1: minimal `wiki_ingest` + `wiki_query` tools. Phase 2: subagent workers, auto-lint, WIKI.md discovery. Phase 3: skill packaging, auto-ingest, cross-wiki backlinks.
+- Atomic writes (tempfile + os.replace) for all persistent file operations
+- `WikiManager` receives LLM client for compile/query (same pattern as `DreamSynthesizer`)
+
+**Phase 2 (planned):** subagent workers for parallel ingest, auto-lint, WIKI.md schema discovery
+**Phase 3 (planned):** skill packaging, auto-ingest, cross-wiki backlinks
 
 Full spec: `docs/llm-wiki-spec.md`
 
