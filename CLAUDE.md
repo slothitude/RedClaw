@@ -81,6 +81,12 @@ Wiki (redclaw/wiki/)
     types.py   → WikiPage, IngestRecord, WikiStats dataclasses
     manager.py → WikiManager: ingest (LLM compile), query (index-first), lint, stats
     tools.py   → execute_wiki dispatch + singleton get_wiki_manager()
+    ↓
+Simulation (redclaw/sim/)
+    types.py   → SimEntity, SimParameter, SimMetrics dataclasses
+    engine.py  → SimEngine: pure-math 2D physics (Euler integration, damping, boundary bounce)
+    runner.py  → SimRunner: async tick loop wrapper (~30fps) with emit callbacks
+    tools.py   → Tool registration: spawn_entity, set_sim_parameter, query_state, apply_force
 ```
 
 ### Key patterns
@@ -105,6 +111,8 @@ Wiki (redclaw/wiki/)
 ### CLI flags
 
 Run `python -m redclaw --help` for full flag list. Version is maintained in both `redclaw/__init__.py` (`__version__`) and `pyproject.toml` (`version`) — keep in sync.
+
+Key simulation flag: `--sim` enables the simulation controller (2D physics world with entity spawning via agent tools). Available in REPL and RPC modes.
 
 ### Plan Mode
 
@@ -150,7 +158,7 @@ Isolated nested ConversationRuntime for delegated tasks:
 - **Turn limit** — default 5 tool rounds per subagent
 - **Timeout** — default 60s per subagent
 - **Batch mode** — up to 3 concurrent subtasks via semaphore
-- **Subagent Types (Bloodlines)** — CODER (core+shell tools), SEARCHER (core+web tools), GENERAL (all non-excluded)
+- **Subagent Types (Bloodlines)** — CODER (core+shell tools), SEARCHER (core+web tools), GENERAL (all non-excluded), SIMULATOR (core+simulator tools)
 - **Retry-with-Reflection** — up to 3 retries with accumulated failure context; timeout escalates with each attempt
 - **Wisdom Inheritance (Crypt)** — subagents inherit accumulated bloodline wisdom; results are entombed for future learning
 
@@ -172,6 +180,8 @@ Named collections of tool names with recursive include resolution:
 | `knowledge` | knowledge |
 | `agi` | execute_goal |
 | `wiki` | wiki |
+| `simulator` | spawn_entity, set_sim_parameter, query_state, apply_force |
+| `simulator` | spawn_entity, set_sim_parameter, query_state, apply_force |
 
 Custom toolsets can be registered at runtime.
 
@@ -283,6 +293,46 @@ LLM-compiled markdown wiki that replaces query-time RAG with accumulated knowled
 
 Full spec: `docs/llm-wiki-spec.md`
 
+### Simulation Controller
+
+2D math+physics simulation world where the AI spawns and evolves entities. Gated behind `--sim` CLI flag.
+
+**Module:** `redclaw/sim/`
+- `types.py` — `SimEntity`, `SimParameter`, `SimMetrics` dataclasses
+- `engine.py` — `SimEngine`: pure-math 2D physics (Euler integration, velocity damping, boundary bounce, gravity, force impulses)
+- `runner.py` — `SimRunner`: async tick loop (~30fps) with emit callbacks for downstream consumers
+- `tools.py` — `register_sim_tools()` registers 4 `ToolSpec`s with `ToolExecutor`
+
+**Agent tools:** `spawn_entity`, `set_sim_parameter`, `query_state`, `apply_force` (registered via `simulator` toolset)
+**CLI flag:** `--sim` (enable, wires into REPL and RPC modes)
+**RPC method:** `sim_command` with actions: spawn_entity, remove_entity, set_parameter, query_state, apply_force, start, stop, reset, get_metrics
+
+**Engine parameters (tunable):** gravity (default 0), damping (0.98), bounds_restitution (0.8), tick_rate (30fps)
+**World bounds:** [-500, -500] to [500, 500]
+**Entity types:** particle (small, fast), orb (large, gradient), field (transparent rect), constraint (line to nearest)
+**Stability score:** 0-1 based on average velocity magnitude (lower = more stable)
+
+**Godot rendering:**
+- `godot/scripts/sim_controller.gd` — Node2D entity renderer with type-specific visuals, position lerping, camera pan/zoom
+- `godot/ui/sim_panel.gd` — SubViewport + overlay controls (play/pause, reset, speed slider, metrics labels)
+- Layout: simulation panel center, chat in collapsible left sidebar, right tabs unchanged
+
+**SIMULATOR bloodline:**
+- `SubagentType.SIMULATOR` — system prompt focused on spawning/tuning/stabilizing entities
+- Toolset: `["core", "simulator"]` — file ops + sim tools
+- DNA profile: speed=0.4, accuracy=0.7, creativity=0.8, persistence=0.6 (defaults to "creative" prompt style)
+- Dream synthesis includes `=== SIMULATOR ===` section for accumulated wisdom
+
+**AGI integration:**
+- Event bus: `EVENT_SIM_CREATED`, `EVENT_SIM_TICK_MILESTONE`, `EVENT_SIM_STABILITY_CHANGED`
+- Karma: positive keywords (stable, balanced, coherent, orbital, equilibrium)
+- Context budget: `sim_state` section (200 char budget)
+- Autonomous executive: accepts `"simulator"` as valid subagent type for goal decomposition
+
+**CLAW.md directives:** Project-root `CLAW.md` auto-discovered by `prompt.py`, provides geometry rules, physics constraints, entity specs, stability targets.
+
+**Tests:** `tests/test_sim.py` — 41 tests covering engine, runner, tools, bloodline, DNA, context budget, events, karma, RPC handler.
+
 ### AGI Executive (Active Autonomous Mode)
 
 Activated via `--agi` CLI flag or mode chooser option 5. All AGI code is gated behind this flag — existing modes are completely unaffected.
@@ -318,12 +368,12 @@ Activated via `--agi` CLI flag or mode chooser option 5. All AGI code is gated b
 
 - **SOUL.md** (`soul.py`) — Constitutional value system loaded from `~/.redclaw/SOUL.md`, SHA256 integrity check
 - **DNA Traits** (`dna.py`) — Per-bloodline evolving traits that produce timeout/turn/prompt modifiers
-- **Dream Synthesis** (`dream.py`) — Periodic LLM-powered consolidation of entombed records into dharma and bloodline wisdom
+- **Dream Synthesis** (`dream.py`) — Periodic LLM-powered consolidation of entombed records into dharma and bloodline wisdom (includes SIMULATOR bloodline)
 - **Event Bus** (`event_bus.py`) — In-memory pub/sub for AGI coordination events
 - **Karma Observer** (`karma.py`) — Deterministic alignment scoring against SOUL principles
 - **Autonomous Executive** (`autonomous.py`) — Background goal queue with plan/execute/evaluate loop
 - **AGI Tools** (`agi_tools.py`) — `execute_goal` tool (add, list, status, cancel goals)
-- **Context Budget** (`context_budget.py`) — Token-aware AGI state injection (3000 char budget)
+- **Context Budget** (`context_budget.py`) — Token-aware AGI state injection (3200 char budget, includes sim_state)
 
 **CLI flags:** `--agi` (enable), `--agi-interval` (loop interval, default 60s)
 **Slash commands (AGI mode only):** `/goals`, `/karma`, `/reflect`
