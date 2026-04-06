@@ -144,6 +144,13 @@ class TelegramSession:
             if persona:
                 assistant_context = f"Your name is {persona}.\n" + assistant_context
 
+        # Tell the agent that files are auto-sent to the Telegram user
+        assistant_context += (
+            "\nYou are running in Telegram mode. "
+            "Files you create with write_file are automatically sent to the user as Telegram documents. "
+            "To send an image, download it with bash (e.g. curl -o) and then use write_file to save it — it will be auto-sent.\n"
+        )
+
         self.rt = ConversationRuntime(
             client=self.client,
             provider=self.provider,
