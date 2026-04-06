@@ -13,7 +13,10 @@ import base64
 import io
 import logging
 import os
+import re
+import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 # Accept Coqui CPML license non-commercial use
@@ -63,14 +66,9 @@ def _get_coqui_model():
     """Load XTTS-v2 model (lazy, ~1.8GB download on first use)."""
     global _coqui_model
     if _coqui_model is None:
-        # Patch torch.load for PyTorch 2.6+ weights_only default
         import torch
-        _orig_load = torch.load
-        def _patched_load(*a, **kw):
-            kw.setdefault("weights_only", False)
-            return _orig_load(*a, **kw)
-        torch.load = _patched_load
-
+        torch.set_num_threads(os.cpu_count() or 8)
+        logger.info(f"Torch threads: {torch.get_num_threads()}")
         logger.info("Loading Coqui XTTS-v2 model (CPU)...")
         _coqui_model = CoquiTTS("tts_models/multilingual/multi-dataset/xtts_v2")
         logger.info("XTTS-v2 model loaded.")
@@ -217,6 +215,176 @@ def get_languages() -> str:
     if _USE_COQUI:
         return "XTTS-v2 languages: " + ", ".join(XTTS_LANGUAGES)
     return "edge-tts: 400+ voices in 100+ languages. Use language code (en, es, fr, etc.)"
+
+
+@mcp.tool()
+def speak(text: str, language: str = "en", speaker_wav: str = "") -> str:
+    """Generate speech and play it immediately via streaming.
+
+    Splits text into sentences and generates+plays each one in a pipeline
+    so audio starts playing within seconds rather than waiting for full generation.
+    Returns immediately — audio plays in the background.
+
+    Args:
+        text: The text to speak.
+        language: Language code (en, es, fr, de, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, ja, hu, ko).
+        speaker_wav: Reference audio filename in voices/ dir (for voice cloning), or full path.
+
+    Returns:
+        Status message. Audio plays in background.
+    """
+    if not text.strip():
+        return "Error: empty text"
+    voice_path = _get_voice_path(speaker_wav) or ""
+    # Start streaming in background thread
+    t = threading.Thread(
+        target=_stream_and_play,
+        args=(text, language, voice_path),
+        daemon=True,
+    )
+    t.start()
+    preview = text[:60] + ("..." if len(text) > 60 else "")
+    return f"Streaming: {preview}"
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences for streaming generation."""
+    # Split on sentence-ending punctuation followed by space or end
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    # Merge very short fragments with the previous one
+    sentences = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if sentences and len(part) < 20:
+            sentences[-1] += " " + part
+        else:
+            sentences.append(part)
+    return sentences or [text]
+
+
+def _play_wav(path: str):
+    """Play a WAV file using ffplay (non-blocking, waits for completion)."""
+    try:
+        subprocess.run(
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(path)],
+            timeout=30,
+        )
+    except FileNotFoundError:
+        # Fallback: Windows powershell
+        ps_cmd = (
+            f"(New-Object Media.SoundPlayer '{path}').PlaySync()"
+        )
+        subprocess.run(
+            ["powershell.exe", "-Command", ps_cmd],
+            timeout=30,
+        )
+    except Exception as e:
+        logger.error(f"Playback error: {e}")
+
+
+def _generate_sentence(model, sentence: str, language: str, voice_path: str) -> str:
+    """Generate a single sentence to a temp WAV file, returns path."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=tempfile.gettempdir())
+    tmp_path = tmp.name
+    tmp.close()
+    try:
+        if voice_path:
+            model.tts_to_file(
+                text=sentence, language=language,
+                speaker_wav=voice_path, file_path=tmp_path,
+            )
+        else:
+            model.tts_to_file(
+                text=sentence, language=language, file_path=tmp_path,
+            )
+        return tmp_path
+    except Exception as e:
+        logger.error(f"TTS generation error: {e}")
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return ""
+
+
+def _stream_and_play(text: str, language: str, voice_path: str):
+    """Pipeline: generate sentence N+1 while sentence N plays."""
+    if not _USE_COQUI:
+        # edge-tts fallback — generate full audio then play
+        _stream_edge_fallback(text, language)
+        return
+
+    model = _get_coqui_model()
+    sentences = _split_sentences(text)
+    if not sentences:
+        return
+
+    logger.info(f"Streaming {len(sentences)} sentence(s)...")
+
+    # Generate first sentence
+    current_wav = _generate_sentence(model, sentences[0], language, voice_path)
+    temp_files = [current_wav]
+
+    for i in range(len(sentences)):
+        if not current_wav or not os.path.exists(current_wav):
+            break
+
+        # Start generating next sentence in background (if there is one)
+        next_wav = ""
+        if i + 1 < len(sentences):
+            next_wav = _generate_sentence(
+                model, sentences[i + 1], language, voice_path
+            )
+            temp_files.append(next_wav)
+
+        # Play current sentence (blocks until playback finishes)
+        logger.info(f"Playing sentence {i + 1}/{len(sentences)}")
+        _play_wav(current_wav)
+
+        current_wav = next_wav
+
+    # Cleanup temp files
+    for f in temp_files:
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
+    logger.info("Streaming playback complete.")
+
+
+def _stream_edge_fallback(text: str, language: str):
+    """Fallback streaming using edge-tts."""
+    import edge_tts
+
+    LANG_VOICES = {
+        "en": "en-US-AriaNeural", "es": "es-ES-ElviraNeural",
+        "fr": "fr-FR-DeniseNeural", "de": "de-DE-KatjaNeural",
+        "it": "it-IT-ElsaNeural", "pt": "pt-BR-FranciscaNeural",
+        "ru": "ru-RU-SvetlanaNeural", "zh": "zh-CN-XiaoxiaoNeural",
+        "zh-cn": "zh-CN-XiaoxiaoNeural", "ja": "ja-JP-NanamiNeural",
+        "ko": "ko-KR-SunHiNeural", "ar": "ar-SA-ZariyahNeural",
+        "hi": "hi-IN-SwaraNeural",
+    }
+    voice = LANG_VOICES.get(language.lower(), "en-US-AriaNeural")
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    try:
+        async def _gen():
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(tmp_path)
+
+        asyncio.run(_gen())
+        _play_wav(tmp_path)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
