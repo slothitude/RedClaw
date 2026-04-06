@@ -64,8 +64,8 @@ def main():
         logger.info(f"Starting {srv['name']} on port {srv['port']}...")
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdout=subprocess.DEVNULL if not args.verbose else None,
+            stderr=subprocess.STDOUT if not args.verbose else None,
             env=env,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
         )
