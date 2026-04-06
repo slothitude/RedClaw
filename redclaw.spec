@@ -73,6 +73,10 @@ a = Analysis(
         "redclaw.api.types",
         "redclaw.api.sse",
         "redclaw.mcp_client",
+        "redclaw.wiki",
+        "redclaw.wiki.types",
+        "redclaw.wiki.manager",
+        "redclaw.wiki.tools",
         # dynamic dependencies
         "yaml",
         "httpx",
