@@ -204,4 +204,4 @@ class ToolExecutor:
             result = await spec.execute(**tool_input)
             return result
         except Exception as exc:
-            return f"Error executing {tool_name}: {exc}\n{traceback.format_exc()}"
+            return f"Error: {tool_name} failed: {exc}\n{traceback.format_exc()}"

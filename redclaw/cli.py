@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -33,6 +34,7 @@ from redclaw.runtime.permissions import PermissionMode, PermissionPolicy
 from redclaw.runtime.session import Session, load_session, save_session, list_sessions
 from redclaw.runtime.usage import UsageTracker
 from redclaw.tools.registry import ToolExecutor
+from redclaw import __version__
 
 console = Console()
 
@@ -42,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="redclaw",
         description="RedClaw — a minimal AI coding agent",
     )
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     p.add_argument("prompt", nargs="?", help="Initial prompt (omit for interactive REPL)")
     p.add_argument("--provider", default="zai", help="LLM provider (zai, openai, anthropic, ollama, groq, deepseek, openrouter, or custom)")
     p.add_argument("--model", default="", help="Model name (provider default if omitted)")
@@ -88,6 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     adv.add_argument("--knowledge-api-key", default=None, help="LLM API key for Cognee entity extraction")
     adv.add_argument("--wiki", action="store_true", help="Enable LLM-compiled wiki knowledge base")
     adv.add_argument("--wiki-dir", default=None, help="Wiki root directory (default: ~/.redclaw/wiki)")
+    adv.add_argument("--sim", action="store_true", help="Enable simulation controller")
 
     # MCP / Voice
     mcp = p.add_argument_group("MCP")
@@ -143,6 +147,7 @@ async def _run_repl(
     token_saver_flag: bool = False,
     wiki_enabled: bool = False,
     wiki_dir: str | None = None,
+    sim_enabled: bool = False,
 ) -> None:
     """Run the interactive REPL."""
     # Default to RedClaw home if no working dir specified
@@ -238,6 +243,15 @@ async def _run_repl(
             ),
         ))
         console.print(f"[dim]Wiki enabled — {wiki_dir or str(Path.home() / '.redclaw' / 'wiki')}[/]")
+
+    # Simulation system
+    sim_engine = None
+    if sim_enabled:
+        from redclaw.sim.engine import SimEngine
+        from redclaw.sim.tools import register_sim_tools
+        sim_engine = SimEngine()
+        register_sim_tools(tools, sim_engine)
+        console.print("[dim]Simulation engine enabled[/]")
 
     # Subagent system
     subagent_spawner = None
@@ -467,9 +481,13 @@ async def _process_input(rt: ConversationRuntime, user_input: str, tracker: Usag
     async def on_tool_result(tool_id: str, result: str, is_error: bool) -> None:
         color = "red" if is_error else "dim"
         lines = result.split("\n")
-        preview = "\n".join(lines[:5])
-        if len(lines) > 5:
-            preview += f"\n  ... ({len(lines)} lines total)"
+        verbose = logging.getLogger().isEnabledFor(logging.DEBUG)
+        if verbose:
+            preview = result
+        else:
+            preview = "\n".join(lines[:20])
+            if len(lines) > 20:
+                preview += f"\n  ... ({len(lines)} lines total)"
         console.print(f"  [{color}]{preview}[/]")
 
     async def on_usage(usage: Usage) -> None:
@@ -478,12 +496,22 @@ async def _process_input(rt: ConversationRuntime, user_input: str, tracker: Usag
     async def on_error(msg: str) -> None:
         console.print(f"\n[red]Error: {msg}[/]")
 
+    async def on_permission_ask(tool_name: str, reason: str, tool_input: dict) -> bool:
+        console.print(f"\n[yellow]Permission requested:[/] {tool_name}")
+        console.print(f"  Input: {json.dumps(tool_input)[:200]}")
+        try:
+            answer = console.input("[bold]Allow? [y/N]: [/]").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return answer in ("y", "yes")
+
     cb = ConversationCallbacks(
         on_text_delta=on_text_delta,
         on_tool_begin=on_tool_begin,
         on_tool_result=on_tool_result,
         on_usage=on_usage,
         on_error=on_error,
+        on_permission_ask=on_permission_ask,
     )
 
     with Live(console=console, refresh_per_second=8, vertical_overflow="visible") as live:
@@ -709,6 +737,7 @@ def main() -> int | None:
             perm_mode=args.permission_mode,
             session_id=args.session,
             working_dir=args.working_dir,
+            sim_enabled=args.sim,
         ))
     elif args.mode == "telegram":
         from redclaw.telegram_bot import RedClawTelegramBot
@@ -767,6 +796,7 @@ def main() -> int | None:
             token_saver_flag=args.token_saver,
             wiki_enabled=args.wiki,
             wiki_dir=args.wiki_dir,
+            sim_enabled=args.sim,
         ))
     else:
         asyncio.run(_run_repl(
@@ -789,6 +819,7 @@ def main() -> int | None:
             token_saver_flag=args.token_saver,
             wiki_enabled=args.wiki,
             wiki_dir=args.wiki_dir,
+            sim_enabled=args.sim,
         ))
 
     return 0

@@ -18,6 +18,7 @@ from redclaw.api.providers import ProviderConfig
 from redclaw.api.types import (
     InputMessage,
     MessageRequest,
+    PermissionLevel,
     Role,
     StreamEvent,
     StreamEventType,
@@ -61,6 +62,7 @@ class ConversationCallbacks:
     on_tool_result: Callable[[str, str, bool], Awaitable[None]] | None = None  # tool_use_id, result, is_error
     on_usage: Callable[[Usage], Awaitable[None]] | None = None
     on_error: Callable[[str], Awaitable[None]] | None = None
+    on_permission_ask: Callable[[str, str, dict], Awaitable[bool]] | None = None  # tool_name, reason, tool_input → True=allow
 
 
 # ── Conversation Runtime ────────────────────────────────────
@@ -148,7 +150,7 @@ class ConversationRuntime:
 
     def set_plan_mode(self, enabled: bool) -> None:
         if enabled and not self._plan_mode:
-            plan_tools = {"read_file", "glob_search", "grep_search", "web_search", "web_reader", "write_file"}
+            plan_tools = {"read_file", "glob_search", "grep_search", "web_search", "web_reader"}
             filtered = ToolExecutor.__new__(ToolExecutor)
             filtered.specs = {
                 name: spec for name, spec in self._original_tools.specs.items()
@@ -335,7 +337,7 @@ class ConversationRuntime:
 
                 # Check permissions
                 spec = self.tools.specs.get(tc.name)
-                tool_level = spec.permission if spec else __import__("redclaw.api.types", fromlist=["PermissionLevel"]).PermissionLevel.DANGER_FULL_ACCESS
+                tool_level = spec.permission if spec else PermissionLevel.DANGER_FULL_ACCESS
                 allowed, reason = self.permissions.authorize(tc.name, tool_level)
 
                 if not allowed:
@@ -351,7 +353,18 @@ class ConversationRuntime:
 
                 if reason == "ask":
                     # Signal that user confirmation is needed
-                    pass  # TODO: integrate with CLI/Godot confirmation
+                    if cb.on_permission_ask:
+                        allowed = await cb.on_permission_ask(tc.name, reason, tc.input)
+                        if not allowed:
+                            result = "Permission denied by user"
+                            tool_results.append(ToolResultBlock(
+                                tool_use_id=tc.id,
+                                content=result,
+                                is_error=True,
+                            ))
+                            if cb.on_tool_result:
+                                await cb.on_tool_result(tc.id, result, True)
+                            continue
 
                 # Pre-hook
                 if not await self.hooks.run_pre_tool(tc.name, tc.input):
@@ -372,7 +385,7 @@ class ConversationRuntime:
                 # Post-hook
                 await self.hooks.run_post_tool(tc.name, result)
 
-                is_error = result.startswith("Error:")
+                is_error = result.startswith("Error")
                 tool_results.append(ToolResultBlock(
                     tool_use_id=tc.id,
                     content=result,

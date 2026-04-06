@@ -85,7 +85,9 @@ async def execute_web_search(
     **kwargs: Any,
 ) -> str:
     """Search the web using a SearXNG instance."""
-    url = search_url or os.environ.get("REDCLAW_SEARCH_URL", "http://100.84.161.63:8080")
+    url = search_url or os.environ.get("REDCLAW_SEARCH_URL")
+    if not url:
+        return "Error: No search URL configured. Set --search-url or REDCLAW_SEARCH_URL env var."
     params: dict[str, Any] = {
         "q": query,
         "format": "json",
@@ -126,7 +128,9 @@ async def execute_web_reader(
     Uses the Web Reader API to extract content from any URL.
     Formats: text (markdown), clean (plain text), json (structured), stats.
     """
-    base = reader_url or os.environ.get("REDCLAW_READER_URL", "http://localhost:8003")
+    base = reader_url or os.environ.get("REDCLAW_READER_URL")
+    if not base:
+        return "Error: No reader URL configured. Set --reader-url or REDCLAW_READER_URL env var."
     endpoint = f"{base}/read"
 
     try:

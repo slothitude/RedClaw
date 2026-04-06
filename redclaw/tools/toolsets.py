@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -64,6 +67,10 @@ BUILTIN_TOOLSETS: dict[str, Toolset] = {
         name="wiki",
         tools=["wiki"],
     ),
+    "simulator": Toolset(
+        name="simulator",
+        tools=["spawn_entity", "set_sim_parameter", "query_state", "apply_force"],
+    ),
 }
 
 
@@ -81,6 +88,7 @@ def resolve_toolset(
 
     ts = all_sets.get(name)
     if ts is None:
+        logger.warning("Unknown toolset '%s'", name)
         return set()
 
     result = set(ts.tools)

@@ -139,6 +139,51 @@ class MemoryManager:
         """Search memories for a keyword or phrase."""
         return await self.recall(query)
 
+    async def prune(self, older_than_days: int = 30) -> str:
+        """Remove entries older than N days. Removes sections with no remaining entries."""
+        import time
+
+        current = self._read_memory()
+        if not current:
+            return "No memories to prune."
+
+        cutoff = time.time() - (older_than_days * 86400)
+        sections = re.split(r"(?=^# )", current, flags=re.MULTILINE)
+        kept: list[str] = []
+        pruned_count = 0
+
+        for section in sections:
+            lines = section.split("\n")
+            header = lines[0] if lines else ""
+            entries = [l for l in lines[1:] if l.strip().startswith("-")]
+
+            fresh = []
+            for entry in entries:
+                # Check if entry has a timestamp we can parse
+                ts_match = re.search(r"\[(\d{4}-\d{2}-\d{2})\]", entry)
+                if ts_match:
+                    try:
+                        from datetime import datetime
+                        entry_time = datetime.strptime(ts_match.group(1), "%Y-%m-%d").timestamp()
+                        if entry_time < cutoff:
+                            pruned_count += 1
+                            continue
+                    except ValueError:
+                        pass
+                fresh.append(entry)
+
+            if fresh:
+                kept.append(header + "\n" + "\n".join(fresh) + "\n")
+            else:
+                pruned_count += len(entries)  # removed whole section
+
+        if not pruned_count:
+            return "No entries older than {older_than_days} days found."
+
+        new_content = "".join(kept)
+        self._atomic_write(self._memory_path(), new_content)
+        return f"Pruned {pruned_count} entries older than {older_than_days} days."
+
 
 # ── Tool execute function (registered with ToolExecutor) ─────
 
@@ -172,5 +217,10 @@ async def execute_memory(
         return await mgr.recall(query or content)
     elif action == "search":
         return await mgr.search(query or content)
+    elif action == "prune":
+        days = 30
+        if query and query.isdigit():
+            days = int(query)
+        return await mgr.prune(older_than_days=days)
     else:
-        return f"Error: Unknown action '{action}'. Use recall, store, or search."
+        return f"Error: Unknown action '{action}'. Use recall, store, search, or prune."
