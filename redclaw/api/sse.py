@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+MAX_BUFFER_SIZE = 10_000_000  # 10MB
+
 
 class SseParser:
     """Incremental SSE frame parser.
@@ -16,6 +22,9 @@ class SseParser:
     def feed(self, chunk: str) -> list[tuple[str, str]]:
         """Feed a chunk and return any complete events."""
         self._buffer += chunk
+        if len(self._buffer) > MAX_BUFFER_SIZE:
+            logger.warning("SSE buffer exceeded %d bytes, truncating", MAX_BUFFER_SIZE)
+            self._buffer = self._buffer[-MAX_BUFFER_SIZE:]
         events: list[tuple[str, str]] = []
         while "\n\n" in self._buffer:
             raw, self._buffer = self._buffer.split("\n\n", 1)

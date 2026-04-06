@@ -7,6 +7,9 @@ import tempfile
 from difflib import get_close_matches
 from pathlib import Path
 
+MAX_FILE_SIZE = 10_000_000  # 10MB write limit
+MAX_READ_LINES = 5000
+
 
 def _resolve(path: str, cwd: str) -> Path:
     """Resolve a path relative to cwd, preventing traversal outside."""
@@ -58,7 +61,9 @@ async def execute_read_file(
 
     # 1-indexed for display
     start = (offset or 0)
-    end = start + (limit or len(lines))
+    max_end = start + (limit or MAX_READ_LINES)
+    end = min(max_end, start + MAX_READ_LINES) if limit is None else max_end
+    end = min(end, len(lines))
 
     selected = lines[start:end]
     numbered = []
@@ -77,6 +82,8 @@ async def execute_write_file(
     cwd: str | None = None,
 ) -> str:
     """Write content to a file atomically, creating directories if needed."""
+    if len(content) > MAX_FILE_SIZE:
+        return f"Error: Content exceeds {MAX_FILE_SIZE:,} byte limit ({len(content):,} bytes)"
     resolved = _resolve(path, cwd or str(Path.cwd()))
     resolved.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(

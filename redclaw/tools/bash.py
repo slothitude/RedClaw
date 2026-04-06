@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
+
+MAX_OUTPUT_SIZE = 50_000  # 50KB truncation limit
+
+
+def _truncate(text: str, limit: int = MAX_OUTPUT_SIZE) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"\n... [truncated, {len(text) - limit} more bytes]"
 
 
 async def execute_bash(
@@ -12,6 +19,7 @@ async def execute_bash(
     cwd: str | None = None,
 ) -> str:
     """Execute a bash command and return stdout + stderr."""
+    proc = None
     try:
         proc = await asyncio.create_subprocess_shell(
             command,
@@ -23,8 +31,12 @@ async def execute_bash(
             proc.communicate(), timeout=timeout
         )
     except asyncio.TimeoutError:
-        proc.kill()
+        if proc is not None:
+            proc.kill()
+            await proc.wait()
         return f"[Timed out after {timeout}s]\nCommand: {command}"
+    except (OSError, PermissionError) as e:
+        return f"Error: Cannot execute command: {e}"
 
     out = stdout.decode(errors="replace")
     err = stderr.decode(errors="replace")
@@ -36,4 +48,4 @@ async def execute_bash(
     if proc.returncode != 0:
         parts.append(f"[exit code: {proc.returncode}]")
 
-    return "\n".join(parts) if parts else "[no output]"
+    return _truncate("\n".join(parts)) if parts else "[no output]"
