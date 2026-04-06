@@ -51,6 +51,7 @@ _DEFAULT_PROFILES: dict[str, TraitProfile] = {
     "coder": TraitProfile(speed=0.3, accuracy=0.8, creativity=0.3, persistence=0.7),
     "searcher": TraitProfile(speed=0.8, accuracy=0.5, creativity=0.4, persistence=0.4),
     "general": TraitProfile(speed=0.5, accuracy=0.5, creativity=0.5, persistence=0.5),
+    "simulator": TraitProfile(speed=0.4, accuracy=0.7, creativity=0.8, persistence=0.6),
 }
 
 

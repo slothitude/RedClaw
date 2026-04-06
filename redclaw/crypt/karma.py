@@ -23,6 +23,8 @@ _POSITIVE_KEYWORDS = {
     "learn", "understand", "verify", "check", "confirm", "accurate",
     "honest", "transparent", "align", "user", "request", "complete",
     "thorough", "careful", "persist", "success",
+    "stable", "balanced", "coherent", "orbital", "equilibrium",
+    "coordinated",
 }
 
 _NEGATIVE_KEYWORDS = {
@@ -125,6 +127,12 @@ class KarmaObserver:
             return f"Subagent completed {status}: {data.get('task', '')[:100]}"
         elif event.type == "dream_completed":
             return f"Dream synthesis processed {data.get('records', 0)} records"
+        elif event.type == "sim_created":
+            return f"Created simulation entity: {data.get('entity_type', '')} (stable configuration)"
+        elif event.type == "sim_tick_milestone":
+            return f"Simulation tick milestone: {data.get('tick', 0)} ticks, stability={data.get('stability', 0):.2f}"
+        elif event.type == "sim_stability_changed":
+            return f"Simulation stability changed to {data.get('new_stability', 0):.2f}"
         return ""
 
     def _evaluate(self, action: str) -> dict[str, Any]:

@@ -15,6 +15,7 @@ class SubagentType(str, Enum):
     CODER = "coder"
     SEARCHER = "searcher"
     GENERAL = "general"
+    SIMULATOR = "simulator"
 
 
 # ── Type-specific system prompts ─────────────────────────────
@@ -39,10 +40,21 @@ _GENERAL_PROMPT = (
     "Return your final answer clearly."
 )
 
+_SIMULATOR_PROMPT = (
+    "You are a simulation subagent. Focus on spawning and tuning entities in a 2D physics world. "
+    "Use spawn_entity to create particles, orbs, fields, and constraints. "
+    "Use set_sim_parameter to adjust gravity, damping, and other physics settings. "
+    "Use query_state to inspect entity positions and velocities. "
+    "Use apply_force to nudge entities toward stable configurations. "
+    "Aim for stable, balanced configurations with low average velocity. "
+    "Return a summary of what you created and the resulting stability."
+)
+
 SUBAGENT_PROMPTS: dict[SubagentType, str] = {
     SubagentType.CODER: _CODER_PROMPT,
     SubagentType.SEARCHER: _SEARCHER_PROMPT,
     SubagentType.GENERAL: _GENERAL_PROMPT,
+    SubagentType.SIMULATOR: _SIMULATOR_PROMPT,
 }
 
 
@@ -52,6 +64,7 @@ SUBAGENT_TOOLSETS: dict[SubagentType, list[str]] = {
     SubagentType.CODER: ["core", "shell"],
     SubagentType.SEARCHER: ["core", "web"],
     SubagentType.GENERAL: ["core", "shell", "web"],
+    SubagentType.SIMULATOR: ["core", "simulator"],
 }
 
 

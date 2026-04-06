@@ -17,9 +17,10 @@ _BUDGETS = {
     "goals": 300,
     "dharma": 400,
     "reflection": 300,
+    "sim": 200,
 }
 
-_TOTAL_BUDGET = 3000  # max chars for all AGI sections combined
+_TOTAL_BUDGET = 3200  # max chars for all AGI sections combined
 
 
 @dataclass
@@ -37,6 +38,7 @@ def budget_context(
     goals_summary: str = "",
     dharma: str = "",
     reflection: str = "",
+    sim_state: str = "",
 ) -> str:
     """Apply character budgets to AGI context sections.
 
@@ -50,6 +52,7 @@ def budget_context(
         BudgetedSection("goals", goals_summary, _BUDGETS["goals"]),
         BudgetedSection("dharma", dharma, _BUDGETS["dharma"]),
         BudgetedSection("reflection", reflection, _BUDGETS["reflection"]),
+        BudgetedSection("sim", sim_state, _BUDGETS["sim"]),
     ]
 
     # Filter empty sections
