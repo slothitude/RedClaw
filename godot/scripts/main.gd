@@ -4,6 +4,7 @@ extends Control
 const SIDEBAR_SCENE: PackedScene = preload("res://ui/sidebar.tscn")
 const CHAT_PANEL_SCENE: PackedScene = preload("res://ui/chat_panel.tscn")
 const TOOL_PANEL_SCENE: PackedScene = preload("res://ui/tool_panel.tscn")
+const WIKI_PANEL_SCENE: PackedScene = preload("res://ui/wiki_panel.tscn")
 const SETTINGS_DIALOG_SCENE: PackedScene = preload("res://ui/settings_dialog.tscn")
 
 var _agent_bridge: Node
@@ -12,6 +13,8 @@ var _settings_mgr: Node
 var _sidebar: VBoxContainer
 var _chat_panel: VBoxContainer
 var _tool_panel: VBoxContainer
+var _wiki_panel: VBoxContainer
+var _right_tabs: TabContainer
 var _status_bar: HBoxContainer
 var _settings_dialog: AcceptDialog
 
@@ -55,6 +58,7 @@ func _ready() -> void:
 	_agent_bridge.turn_finished.connect(_on_turn_finished)
 	_agent_bridge.error_occurred.connect(_on_error)
 	_agent_bridge.connection_status_changed.connect(_on_connection_changed)
+	_agent_bridge.plan_mode_changed.connect(_on_plan_mode_changed)
 
 	# Auto-start with default settings if available
 	_try_auto_start()
@@ -66,7 +70,7 @@ func _build_layout() -> void:
 	main_vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(main_vbox)
 
-	# HSplit: sidebar | chat | tool panel
+	# HSplit: sidebar | chat | right panel (TabContainer)
 	var hsplit: HSplitContainer = HSplitContainer.new()
 	hsplit.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main_vbox.add_child(hsplit)
@@ -83,11 +87,22 @@ func _build_layout() -> void:
 	hsplit.add_child(_chat_panel)
 	_chat_panel.setup(_agent_bridge)
 
-	# Tool panel
-	_tool_panel = TOOL_PANEL_SCENE.instantiate()
-	hsplit.add_child(_tool_panel)
+	# Right panel: TabContainer with Tool Output + Wiki tabs
+	_right_tabs = TabContainer.new()
+	_right_tabs.custom_minimum_size = Vector2(250, 0)
 
-	# Status bar
+	_tool_panel = TOOL_PANEL_SCENE.instantiate()
+	_tool_panel.name = "Tool Output"
+	_right_tabs.add_child(_tool_panel)
+
+	_wiki_panel = WIKI_PANEL_SCENE.instantiate()
+	_wiki_panel.name = "Wiki"
+	_right_tabs.add_child(_wiki_panel)
+	_wiki_panel.setup(_agent_bridge)
+
+	hsplit.add_child(_right_tabs)
+
+	# Status bar (built inline since we add plan_label)
 	_status_bar = HBoxContainer.new()
 	main_vbox.add_child(_status_bar)
 
@@ -103,6 +118,12 @@ func _build_layout() -> void:
 	token_label.text = "Tokens: 0 in / 0 out"
 	token_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.58))
 	_status_bar.add_child(token_label)
+
+	var plan_label: Label = Label.new()
+	plan_label.name = "PlanLabel"
+	plan_label.text = ""
+	plan_label.add_theme_color_override("font_color", Color(0.9, 0.7, 0.1))
+	_status_bar.add_child(plan_label)
 
 	var perm_label: Label = Label.new()
 	perm_label.name = "PermLabel"
@@ -177,6 +198,14 @@ func _on_connection_changed(connected: bool) -> void:
 	var status_label: Label = _status_bar.get_node("StatusLabel") as Label
 	if status_label:
 		status_label.text = "Connected" if connected else "Disconnected"
+
+
+func _on_plan_mode_changed(enabled: bool) -> void:
+	var plan_label: Label = _status_bar.get_node("PlanLabel") as Label
+	if plan_label:
+		plan_label.text = "PLAN" if enabled else ""
+	# Update chat panel input styling
+	_chat_panel.set_plan_mode(enabled)
 
 
 func _on_sidebar_settings_changed(settings: Dictionary) -> void:

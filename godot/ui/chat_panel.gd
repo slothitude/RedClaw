@@ -8,16 +8,23 @@ var _current_assistant_label: RichTextLabel = null
 var _current_assistant_text: String = ""
 var _current_tool_panel: PanelContainer = null
 var _is_streaming: bool = false
+var _plan_mode_active: bool = false
 
 @onready var chat_scroll: ScrollContainer = $ChatScroll
 @onready var chat_messages: VBoxContainer = $ChatScroll/ChatMessages
 @onready var input_field: TextEdit = $InputBar/InputField
 @onready var send_button: Button = $InputBar/SendButton
+@onready var plan_btn: Button = $ActionButtons/PlanBtn
+@onready var go_btn: Button = $ActionButtons/GoBtn
+@onready var compact_btn: Button = $ActionButtons/CompactBtn
 
 
 func _ready() -> void:
 	send_button.pressed.connect(_on_send)
 	input_field.gui_input.connect(_on_input_gui_input)
+	plan_btn.pressed.connect(_on_plan_btn)
+	go_btn.pressed.connect(_on_go_btn)
+	compact_btn.pressed.connect(_on_compact_btn)
 
 
 func setup(bridge: Node) -> void:
@@ -27,6 +34,24 @@ func setup(bridge: Node) -> void:
 	_bridge.tool_result_received.connect(_on_tool_result)
 	_bridge.turn_finished.connect(_on_turn_finished)
 	_bridge.error_occurred.connect(_on_error)
+
+
+func set_plan_mode(active: bool) -> void:
+	_plan_mode_active = active
+	_update_input_style()
+
+
+func _update_input_style() -> void:
+	var style: StyleBoxFlat = StyleBoxFlat.new()
+	if _plan_mode_active:
+		style.border_color = Color(0.9, 0.7, 0.1)
+		style.set_border_width_all(2)
+		style.bg_color = Color(0.15, 0.13, 0.08)
+	else:
+		style.bg_color = Color(0.12, 0.12, 0.16)
+	style.set_corner_radius_all(4)
+	input_field.add_theme_stylebox_override("normal", style)
+	input_field.add_theme_stylebox_override("focus", style)
 
 
 func _on_input_gui_input(event: InputEvent) -> void:
@@ -58,12 +83,27 @@ func _on_send() -> void:
 	_bridge.send_prompt(text)
 
 
+func _on_plan_btn() -> void:
+	if _bridge and _bridge.is_connected:
+		_bridge.send_prompt("/plan")
+
+
+func _on_go_btn() -> void:
+	if _bridge and _bridge.is_connected:
+		_bridge.send_prompt("/go")
+
+
+func _on_compact_btn() -> void:
+	if _bridge and _bridge.is_connected:
+		_bridge.compact()
+
+
 func _add_user_message(text: String) -> void:
 	var label: RichTextLabel = RichTextLabel.new()
 	label.bbcode_enabled = true
 	label.fit_content = true
 	label.scroll_following = true
-	label.text = "[color=#88aaff][b>You:[/b> [/color> " + _escape_bbcode(text)
+	label.text = "[color=#88aaff][b]You:[/b] [/color] " + _escape_bbcode(text)
 	label.custom_minimum_size.y = 40
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
@@ -96,7 +136,6 @@ func _on_text_delta(text: String) -> void:
 	if _current_assistant_label == null:
 		_current_assistant_label = _add_assistant_bubble()
 	_current_assistant_text += text
-	# Simple markdown → bbcode conversion
 	_current_assistant_label.text = _markdown_to_bbcode(_current_assistant_text)
 	_scroll_to_bottom()
 
@@ -169,18 +208,43 @@ func _escape_bbcode(text: String) -> String:
 
 
 func _markdown_to_bbcode(text: String) -> String:
-	# Basic markdown → bbcode conversion
 	var result: String = text
-	result = result.replace("[", "[lb=").replace("]", "[rb=")
-	# Bold
-	var bold_regex: RegEx = RegEx.create_from_string("\\*\\*(.+?)\\*\\*")
-	result = bold_regex.sub(result, "[b]$1[/b]", true)
-	# Italic
-	var italic_regex: RegEx = RegEx.create_from_string("\\*(.+?)\\*")
-	result = italic_regex.sub(result, "[i]$1[/i]", true)
-	# Code
-	var code_regex: RegEx = RegEx.create_from_string("`(.+?)`")
-	result = code_regex.sub(result, "[code]$1[/code]", true)
+
+	# Escape bbcode brackets FIRST (before inserting any bbcode tags)
+	result = result.replace("[", "[lb]").replace("]", "[rb]")
+
+	# Fenced code blocks: ```lang\n...\n``` → [bgcolor][code]...[/code][/bgcolor]
+	var code_block_re: RegEx = RegEx.create_from_string("```[a-zA-Z]*\\n([\\s\\S]*?)```")
+	result = code_block_re.sub(result, "[bgcolor=#1a1a2e][code]$1[/code][/bgcolor]", true)
+
+	# Inline code: `text` → [code]text[/code]
+	var code_re: RegEx = RegEx.create_from_string("`([^`\\n]+?)`")
+	result = code_re.sub(result, "[code]$1[/code]", true)
+
+	# Headers: ## text → [font_size=18][b]text[/b][/font_size]
+	var h2_re: RegEx = RegEx.create_from_string("^## (.+)$", true)
+	result = h2_re.sub(result, "[font_size=18][b]$1[/b][/font_size]", true)
+
+	# H3: ### text → [font_size=15][b]text[/b][/font_size]
+	var h3_re: RegEx = RegEx.create_from_string("^### (.+)$", true)
+	result = h3_re.sub(result, "[font_size=15][b]$1[/b][/font_size]", true)
+
+	# Bold: **text** → [b]text[/b]
+	var bold_re: RegEx = RegEx.create_from_string("\\*\\*(.+?)\\*\\*")
+	result = bold_re.sub(result, "[b]$1[/b]", true)
+
+	# Italic: *text* → [i]text[/i]
+	var italic_re: RegEx = RegEx.create_from_string("\\*(.+?)\\*")
+	result = italic_re.sub(result, "[i]$1[/i]", true)
+
+	# Bullet lists: - text or * text → bullet
+	var bullet_re: RegEx = RegEx.create_from_string("^[\\-\\*] (.+)$", true)
+	result = bullet_re.sub(result, "[color=#e63847]•[/color] $1", true)
+
+	# Numbered lists: 1. text → numbered
+	var num_re: RegEx = RegEx.create_from_string("^(\\d+)\\. (.+)$", true)
+	result = num_re.sub(result, "[color=#e63847]$1.[/color] $2", true)
+
 	return result
 
 

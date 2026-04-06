@@ -181,6 +181,54 @@ async def run_rpc(
                 rt.provider = provider
                 _reply(req_id, result={"provider": new_provider})
 
+            elif method == "plan_mode":
+                enabled = params.get("enabled", True)
+                rt.set_plan_mode(enabled)
+                _emit({"type": "plan_mode_changed", "enabled": rt.plan_mode})
+                _reply(req_id, result={"plan_mode": rt.plan_mode})
+
+            elif method == "wiki_query":
+                question = params.get("question", "")
+                if not question:
+                    _reply(req_id, error="'question' is required")
+                    continue
+                try:
+                    from redclaw.wiki.tools import execute_wiki
+                    answer = await execute_wiki(
+                        action="query", question=question,
+                        client=client, provider=provider, model=model,
+                    )
+                    _reply(req_id, result={"answer": answer})
+                except Exception as e:
+                    _reply(req_id, error=str(e))
+
+            elif method == "wiki_stats":
+                try:
+                    from redclaw.wiki.tools import execute_wiki
+                    stats = await execute_wiki(
+                        action="stats",
+                        client=client, provider=provider, model=model,
+                    )
+                    _reply(req_id, result={"stats": stats})
+                except Exception as e:
+                    _reply(req_id, error=str(e))
+
+            elif method == "wiki_ingest":
+                source = params.get("source", "")
+                topic = params.get("topic", "general")
+                if not source:
+                    _reply(req_id, error="'source' is required")
+                    continue
+                try:
+                    from redclaw.wiki.tools import execute_wiki
+                    result_text = await execute_wiki(
+                        action="ingest", source=source, topic=topic,
+                        client=client, provider=provider, model=model,
+                    )
+                    _reply(req_id, result={"result": result_text})
+                except Exception as e:
+                    _reply(req_id, error=str(e))
+
             else:
                 _reply(req_id, error=f"Unknown method: {method}")
 
